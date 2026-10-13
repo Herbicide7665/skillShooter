@@ -1,0 +1,137 @@
+:root {
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --line: #e4e7ec;
+  --text: #1f2430;
+  --muted: #6b7280;
+  --accent: #3565e0;
+  --accent-soft: #e8eeff;
+  --ok: #148a4c;
+  --warn: #b45309;
+  --danger: #c23b3b;
+  --radius: 10px;
+  --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+}
+.topnav {
+  display: flex; align-items: center; gap: 28px;
+  background: var(--card); border-bottom: 1px solid var(--line);
+  padding: 0 24px; height: 52px; position: sticky; top: 0; z-index: 10;
+}
+.brand { font-weight: 700; font-size: 16px; letter-spacing: .3px; }
+.navlinks { display: flex; gap: 4px; }
+.navlinks a {
+  padding: 6px 14px; border-radius: 8px; color: var(--muted);
+  text-decoration: none; font-weight: 500;
+}
+.navlinks a:hover { background: var(--bg); color: var(--text); }
+.navlinks a.active { background: var(--accent-soft); color: var(--accent); }
+main { max-width: 1180px; margin: 0 auto; padding: 24px 20px 80px; }
+.loading { color: var(--muted); padding: 40px; text-align: center; }
+
+h1 { font-size: 20px; margin: 4px 0 16px; }
+h2 { font-size: 16px; margin: 22px 0 10px; }
+.muted { color: var(--muted); }
+.mono { font-family: var(--mono); font-size: 12.5px; }
+.small { font-size: 12.5px; }
+
+/* 卡片与网格 */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px 18px;
+}
+.card .num { font-size: 26px; font-weight: 700; line-height: 1.2; }
+.card .lbl { color: var(--muted); font-size: 12.5px; }
+.panel {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 16px 18px; margin-bottom: 18px;
+}
+
+/* 表格 */
+table.tbl { width: 100%; border-collapse: collapse; background: var(--card); border-radius: var(--radius); overflow: hidden; }
+.tbl th, .tbl td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.tbl th { color: var(--muted); font-weight: 600; font-size: 12.5px; background: #fafbfc; }
+.tbl tr:hover td { background: #fafcff; }
+.tbl a { color: var(--accent); text-decoration: none; }
+.tbl a:hover { text-decoration: underline; }
+.desc-cell { max-width: 520px; color: var(--muted); font-size: 12.5px; }
+
+/* 徽章 */
+.badge { display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 11.5px; font-weight: 600; }
+.badge.b-machine { background: var(--accent-soft); color: var(--accent); }
+.badge.b-push { background: #e5f5ec; color: var(--ok); }
+.badge.b-merged { background: #fff3e0; color: var(--warn); }
+.badge.b-exact { background: #fdeaea; color: var(--danger); }
+.badge.b-fuzzy { background: #fff7e0; color: var(--warn); }
+.badge.b-open { background: #eef1f5; color: var(--muted); }
+.badge.b-related { background: #e8eeff; color: var(--accent); }
+.badge.b-chain { background: #efe7ff; color: #6d3fc0; }
+.badge.b-reference { background: #e5f5ec; color: var(--ok); }
+
+/* 表单 */
+input[type=text], select {
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px;
+  font: inherit; background: var(--card); color: var(--text);
+}
+input[type=text]:focus, select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+button {
+  border: 1px solid var(--line); background: var(--card); color: var(--text);
+  border-radius: 8px; padding: 7px 14px; font: inherit; cursor: pointer; font-weight: 500;
+}
+button:hover { border-color: var(--accent); color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { opacity: .88; color: #fff; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.toolbar { display: flex; gap: 10px; margin: 0 0 14px; flex-wrap: wrap; align-items: center; }
+
+/* diff */
+pre.diff {
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  background: #0f1420; color: #c8d3e8; padding: 14px 16px;
+  border-radius: 8px; overflow: auto; max-height: 520px; white-space: pre;
+}
+.diff-add { color: #7ce38b; background: rgba(40,167,69,.12); display: inline-block; width: 100%; }
+.diff-del { color: #ff9b9b; background: rgba(220,53,69,.12); display: inline-block; width: 100%; }
+.diff-hunk { color: #7aa2f7; }
+.diff-head { color: #6b7280; }
+pre.code {
+  font-family: var(--mono); font-size: 12.5px; background: #0f1420; color: #c8d3e8;
+  padding: 14px 16px; border-radius: 8px; overflow: auto; max-height: 560px; white-space: pre-wrap;
+}
+
+/* 时间线 */
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li { display: flex; gap: 14px; padding: 7px 0; border-bottom: 1px dashed var(--line); align-items: baseline; }
+.timeline .ver { font-weight: 700; min-width: 46px; color: var(--accent); }
+.timeline .when { color: var(--muted); min-width: 150px; font-size: 12.5px; }
+
+/* 关系图 */
+#graphbox { height: 640px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
+.legend { display: flex; gap: 18px; margin: 10px 0; font-size: 12.5px; color: var(--muted); }
+.legend i { display: inline-block; width: 22px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+
+/* 合并预览 */
+.merge-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 900px) { .merge-cols { grid-template-columns: 1fr; } }
+
+/* toast */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #22283a; color: #fff; padding: 10px 20px; border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.25); z-index: 100; max-width: 70vw;
+}
+.toast.hidden { display: none; }
+.toast.err { background: var(--danger); }
+
+.kv { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; font-size: 13px; }
+.kv .k { color: var(--muted); }
+.edge-list { margin: 4px 0; }
+.edge-list div { padding: 4px 0; }
+code.inline { background: #f0f2f6; border-radius: 4px; padding: 1px 6px; font-family: var(--mono); font-size: 12px; }
+.legend { flex-wrap: wrap; row-gap: 8px; }
+.famchip { white-space: nowrap; }

@@ -1,0 +1,14 @@
+skillhub.db*
+config.yaml
+*.log
+.token
+skill-hub.exe
+skill-hub
+skill-hub-linux-*
+skill-hub-darwin-*
+.shots/
+.e2e*
+.reg*
+.sandbox*
+*.exe~
+*.bak
