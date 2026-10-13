@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 )
@@ -45,20 +44,30 @@ type fileInfo struct {
 	data []byte
 }
 
-func skipDirs(name string) bool {
-	return name == ".git" || name == "node_modules" || name == "__pycache__"
+// runtimeDirs 运行时产物目录名（任一层级命中即整目录跳过）——
+// skill 目录里的这些子目录是业务数据产物，不属于 skill 本体，进版本历史只会造成版本翻滚
+var runtimeDirs = map[string]bool{
+	"cache": true, "tmp": true, "temp": true, "transcripts": true,
+	"logs": true, "output": true, "outputs": true, "downloads": true, "state": true,
 }
 
+func skipDirs(name string) bool {
+	l := strings.ToLower(name)
+	return name == ".git" || name == "node_modules" || name == "__pycache__" || runtimeDirs[l]
+}
+
+// runtimeExts 运行时产物文件扩展名
+var runtimeExts = map[string]bool{".log": true, ".tmp": true}
+
 // ScanSkills 递归扫描 root 下所有含 SKILL.md 的 skill 目录（支持多层嵌套）。
-// 返回 skillDir(相对root)->files、skill 数、被跳过的文件数与字节数。
-func ScanSkills(root string, opt Options) (map[string]map[string][]byte, int, int, int64, error) {
+// 只采集 SKILL.md 核心文档，目录内其余文件（脚本/产物/参考）不进版本系统。
+// 返回 skillDir(相对root)->files、skill 数。
+func ScanSkills(root string, opt Options) (map[string]map[string][]byte, int, error) {
 	out := map[string]map[string][]byte{}
 	n := 0
-	skippedN := 0
-	var skippedBytes int64
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil // 跳过不可读
+			return nil
 		}
 		if d.IsDir() {
 			if skipDirs(d.Name()) {
@@ -69,10 +78,8 @@ func ScanSkills(root string, opt Options) (map[string]map[string][]byte, int, in
 		if d.Name() != "SKILL.md" {
 			return nil
 		}
-		files, skn, skb := CollectSkillDir(filepath.Dir(path), opt)
-		skippedN += skn
-		skippedBytes += skb
-		if files == nil {
+		files, ok := CollectSkillMD(filepath.Dir(path))
+		if !ok {
 			return nil
 		}
 		rel, err := filepath.Rel(root, filepath.Dir(path))
@@ -83,102 +90,26 @@ func ScanSkills(root string, opt Options) (map[string]map[string][]byte, int, in
 		n++
 		return nil
 	})
-	return out, n, skippedN, skippedBytes, err
+	return out, n, err
 }
 
-// CollectSkillDir 按 Options 策略收集单个 skill 目录（返回 nil 表示无有效 SKILL.md）
-func CollectSkillDir(skillDir string, opt Options) (map[string][]byte, int, int64) {
-	var candidates []fileInfo
-	skillMD := fileInfo{}
-	skippedN := 0
-	var skippedBytes int64
-	_ = filepath.WalkDir(skillDir, func(p string, fd os.DirEntry, ferr error) error {
-		if ferr != nil || fd.IsDir() {
-			if ferr == nil && fd.IsDir() && skipDirs(fd.Name()) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		rel, err := filepath.Rel(skillDir, p)
-		if err != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
-		info, err := fd.Info()
-		if err != nil {
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(rel))
-		if !opt.IncludeBinaries && mediaExts[ext] {
-			skippedN++
-			skippedBytes += info.Size()
-			return nil
-		}
-		if opt.MaxFileBytes > 0 && info.Size() > opt.MaxFileBytes {
-			skippedN++
-			skippedBytes += info.Size()
-			return nil
-		}
-		data, err := os.ReadFile(p)
-		if err != nil {
-			return nil
-		}
-		fi := fileInfo{rel: rel, size: info.Size(), data: data}
-		if fi.rel == "SKILL.md" {
-			skillMD = fi
-		} else {
-			candidates = append(candidates, fi)
-		}
-		return nil
-	})
-	if skillMD.rel == "" {
-		return nil, skippedN, skippedBytes
+// CollectSkillMD 只读 SKILL.md 核心文档（返回 false = 无 SKILL.md）
+func CollectSkillMD(skillDir string) (map[string][]byte, bool) {
+	data, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
+	if err != nil || len(data) == 0 {
+		return nil, false
 	}
-	// 单 skill 总量预算：小文件优先保住，超出预算丢最大的
-	sort.Slice(candidates, func(i, j int) bool { return candidates[i].size < candidates[j].size })
-	budget := opt.MaxSkillBytes - skillMD.size
-	files := map[string][]byte{"SKILL.md": skillMD.data}
-	for _, c := range candidates {
-		if opt.MaxSkillBytes > 0 && budget-c.size < 0 {
-			skippedN++
-			skippedBytes += c.size
-			continue
-		}
-		budget -= c.size
-		files[c.rel] = c.data
-	}
-	return files, skippedN, skippedBytes
+	return map[string][]byte{"SKILL.md": data}, true
 }
 
-// SignatureSkillDir 低成本目录签名：过滤后文件的 (rel, size, mtime) 哈希，不读内容
-func SignatureSkillDir(skillDir string, opt Options) string {
+// SignatureSkillMD 低成本签名：仅 SKILL.md 的 (size, mtime)，不读内容
+func SignatureSkillMD(skillDir string) string {
+	fi, err := os.Stat(filepath.Join(skillDir, "SKILL.md"))
+	if err != nil {
+		return ""
+	}
 	h := sha256.New()
-	_ = filepath.WalkDir(skillDir, func(p string, fd os.DirEntry, ferr error) error {
-		if ferr != nil || fd.IsDir() {
-			if ferr == nil && fd.IsDir() && skipDirs(fd.Name()) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		rel, err := filepath.Rel(skillDir, p)
-		if err != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
-		ext := strings.ToLower(filepath.Ext(rel))
-		if !opt.IncludeBinaries && mediaExts[ext] {
-			return nil
-		}
-		info, err := fd.Info()
-		if err != nil {
-			return nil
-		}
-		if opt.MaxFileBytes > 0 && info.Size() > opt.MaxFileBytes {
-			return nil
-		}
-		fmt.Fprintf(h, "%s|%d|%d\n", rel, info.Size(), info.ModTime().UnixNano())
-		return nil
-	})
+	fmt.Fprintf(h, "SKILL.md|%d|%d\n", fi.Size(), fi.ModTime().UnixNano())
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -257,16 +188,12 @@ func Push(opt Options) (string, error) {
 	if opt.Server == "" || opt.Token == "" || opt.Path == "" {
 		return "", fmt.Errorf("需要 --server --token --path 三个参数")
 	}
-	skills, n, skippedN, skippedBytes, err := ScanSkills(opt.Path, opt)
+	skills, n, err := ScanSkills(opt.Path, opt)
 	if err != nil {
 		return "", err
 	}
 	if n == 0 {
 		return "", fmt.Errorf("在 %s 下未找到任何 SKILL.md", opt.Path)
-	}
-	if skippedN > 0 {
-		fmt.Printf("==> 已按策略跳过 %d 个文件（共 %.1f MB：媒体/超限/超出单skill预算；--include-binaries 或调 --max-file-mb/--max-skill-mb 可放开）\n",
-			skippedN, float64(skippedBytes)/1048576)
 	}
 	return UploadBundle(opt.Server, opt.Token, opt.hostnameOrDefault(), skills)
 }

@@ -193,14 +193,14 @@ func trimCount(out string) string {
 func watchOnce(opt Options) {
 	st := loadState()
 	for _, root := range opt.Roots {
-		skills, _, _, _, err := pusher.ScanSkills(root, opt.PushOpt) // 复用带媒体/大小限制的策略，防增量绕过
+		skills, _, err := pusher.ScanSkills(root, pusher.Options{})
 		if err != nil {
 			continue
 		}
 		changed := map[string]map[string][]byte{}
 		for dirRel, files := range skills {
 			full := filepath.Join(root, filepath.FromSlash(dirRel))
-			sig := pusher.SignatureSkillDir(full, opt.PushOpt) // 签名口径与收集口径一致
+			sig := pusher.SignatureSkillMD(full) // 只看 SKILL.md（size+mtime），不读内容
 			key := root + "::" + dirRel
 			if st.Sigs[key] == sig {
 				continue
@@ -240,9 +240,9 @@ func applyOnce(opt Options) {
 		if target == "" {
 			continue // 本地不存在同名 skill，不注入
 		}
-		files, _, _ := pusher.CollectSkillDir(target, opt.PushOpt) // 哈希口径与推送一致
-		localHash := ""
-		if files != nil {
+		files, ok := pusher.CollectSkillMD(target)
+		var localHash string
+		if ok {
 			localHash = store.TreeHash(files)
 		}
 		if localHash == e.TreeHash {
@@ -264,7 +264,7 @@ func applyOnce(opt Options) {
 			log("下载 %s v%d 失败: %v", e.Name, e.VersionID, err)
 			continue
 		}
-		// 先解压到临时目录，成功后原子替换，防中途失败留半成品被 watcher 推回 hub
+		// 只替换 SKILL.md 核心文档，不动本地目录内其他文件（脚本/产物归本机所有）
 		tmp := target + ".incoming"
 		os.RemoveAll(tmp)
 		if err := pusher.ExtractTarGz(tarGz, tmp); err != nil {
@@ -272,9 +272,14 @@ func applyOnce(opt Options) {
 			os.RemoveAll(tmp)
 			continue
 		}
-		os.RemoveAll(target)
-		if err := os.Rename(tmp, target); err != nil {
-			log("应用 %s 替换目录失败: %v", e.Name, err)
+		md, ok := pusher.CollectSkillMD(tmp)
+		os.RemoveAll(tmp)
+		if !ok {
+			log("应用 %s v%d 失败: 包内无 SKILL.md", e.Name, e.VersionID)
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(target, "SKILL.md"), md["SKILL.md"], 0o644); err != nil {
+			log("应用 %s v%d 写入失败: %v", e.Name, e.VersionID, err)
 			continue
 		}
 		log("已应用云端合并结果: %s -> v%d（来自 %s）", e.Name, e.VersionID, e.Machine)

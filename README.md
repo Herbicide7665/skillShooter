@@ -23,7 +23,7 @@
 - **常驻客户端**（推荐每台机器都跑）：设置页复制 daemon 命令执行即可——增量监控推送（30s）+ 自动应用云端合并（5min，源变体门控防覆盖手工修改）+ 接收远程 skill 调用
 - 手动分发：`skill-hub pull --server ... --token ... --dest ~/.agents/skills`
 - **远程调用**：UI「远程调用」页选机器+skill+提示词下发；目标机器 daemon 拉起 claude/zcode -p 执行并回传 asdste100 报告
-- 采集策略（防媒体档案撑爆库）：媒体/档案扩展名默认剔除（mp3/mp4/zip/exe 等，`--include-binaries` 放开）、单文件 10MB、单 skill 总量 50MB（小文件优先，SKILL.md 永远收）
+- 采集范围：仅 SKILL.md 核心文档（二进制客户端同理）；本机脚本与数据产物永不入库
 
 ## 快速开始
 
@@ -46,7 +46,7 @@ skill-hub push --server http://SERVER_IP:8790 --token TOKEN --path ~/.agents/ski
 skill-hub push --server http://SERVER_IP:8790 --token TOKEN --path ~/.zcode/cli/plugins/cache/zcode-plugins-official
 ```
 
-递归扫描目录下**所有深度**含 `SKILL.md` 的子目录（插件缓存的多层嵌套也能处理）；同机同名 skill 内容变化自动成为新版本（演变时间线）。
+递归扫描目录下**所有深度**含 `SKILL.md` 的子目录（插件缓存的多层嵌套也能处理）。**采集范围 = 仅 SKILL.md 核心文档**：目录内脚本/产物/参考文件不进版本系统（归属本机所有），版本历史即 SKILL.md 演变史 — 体积小、无数据产物噪音。
 
 ### GLM 配置（可选，开启智能功能）
 
