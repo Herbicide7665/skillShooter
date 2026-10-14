@@ -194,3 +194,12 @@ skill-hub.exe（单二进制）
 效果：版本历史 = 纯 SKILL.md 演变史；数据产物（如 bijia transcripts）彻底无感；daemon CPU 进一步下降（签名只 stat 一个文件）；库体积停止吸收资产文件。回归实测：push 17 skills → version_files 恰 17 条且 path 全为 SKILL.md。历史旧版本（含全目录收集的）保留不受影响，diff 仍基于 SKILL.md。
 
 库体积终态：历史 637 个版本全部裁剪为仅 SKILL.md（剔 14831 个非核心文件行），blobs 899MB→5.1MB，db 952MB→6MB，磁盘 87%。
+
+## 十六、闲时任务批次：使用分析/展示过滤/权限模型/审计/GUI 测试（2026-10-14）
+
+1. **使用分析**（USAGE-2026-10-14.md）：24h 5 版本全部来自 your-host 正常编辑；无异常迭代（camoufox-antidetect 4 版为人工）；资源极低（serve 11MB / daemon 6MB）
+2. **展示过滤**：skills.is_system 列（幂等迁移+内置名单回填 92 个）+ POST /api/skills/{id}/system + 列表两开关（隐藏系统/隐藏重复，localStorage 记忆）+ 详情页标记按钮。实测 373→281
+3. **权限模型**：tokens 表（admin/user）+ TokenRole()（主 token 恒 admin）+ 10 个 admin-only 端点 + user 的 jobs/next 返回空任务 + **/api/client/ 内嵌请求者 token（堵死下载提权）** + 设置页 token 管理（创建一次性显示/列表掩码/吊销）。权限矩阵 21 项动态验证全绿
+4. **增量安全审计**（AUDIT.md 第七章）：提权面 10 场景全部通过（含 token 变体/自我提权/SQL 注入/吊销时效）；whoami 免 token 设计（只回显角色）
+5. **GUI 测试**（TEST-REPORT.md）：web-gui-tester 六页面走查，发现并修复 **BUG-1**（前端无 fetch 重试，代理 502 窗口期页面永久卡死）——api() 加 502/网络重试 + 错误框重试按钮；修复回归后六页全过
+6. 部署注意：VPS 库迁移前备份 skillhub.db.bak-20261014-*；pkill -x 重启；本轮再次验证"二进制字符串搜索不可靠，行为验证才准"

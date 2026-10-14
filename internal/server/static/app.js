@@ -31,7 +31,21 @@ function authHeaders(extra) {
 async function api(path, opts) {
   opts = opts || {};
   opts.headers = authHeaders(opts.headers);
-  const r = await fetch('/api' + path, opts);
+  // 502/网络抖动自动重试（指数退避）：上游代理/网络瞬断时不至于整页卡死
+  let r;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      r = await fetch('/api' + path, opts);
+    } catch (e) {
+      if (attempt < 2) { await new Promise(ok => setTimeout(ok, 800 * (attempt + 1))); continue; }
+      throw new Error('网络错误（已重试）: ' + e.message);
+    }
+    if ((r.status === 502 || r.status === 503 || r.status === 504) && attempt < 2) {
+      await new Promise(ok => setTimeout(ok, 800 * (attempt + 1)));
+      continue;
+    }
+    break;
+  }
   if (r.status === 401 && !opts._retried) {
     const t = await askToken();
     if (t) return api(path, Object.assign({}, opts, {_retried: true}));
@@ -86,7 +100,8 @@ function route() {
     graph: pageGraph, dedup: pageDedup, jobs: pageJobs, settings: pageSettings,
   };
   (routes[page] || pageDashboard)(rest).catch(e => {
-    $app.innerHTML = `<div class="panel" style="color:var(--danger)">加载失败: ${esc(e.message)}</div>`;
+    $app.innerHTML = `<div class="panel" style="color:var(--danger)">加载失败: ${esc(e.message)}
+      <button style="margin-left:12px" onclick="route()">重试</button></div>`;
   });
 }
 window.addEventListener('hashchange', route);
