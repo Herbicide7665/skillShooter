@@ -137,6 +137,8 @@ async function pageSkills() {
       <select id="ffilter"><option value="">全部分类</option>
         ${families.map(f => `<option value="${esc(f.kind + ':' + f.key)}">${esc(f.key)}（${f.names.length}）</option>`).join('')}
       </select>
+      <label class="small" style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="hidesys"> 隐藏系统自带</label>
+      <label class="small" style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="hidedup"> 隐藏重复</label>
       <span class="muted small" id="cnt"></span>
     </div>
     <div id="tblbox"><div class="loading">加载中…</div></div>`;
@@ -151,6 +153,15 @@ async function pageSkills() {
       const fam = families.find(f => f.kind + ':' + f.key === fkey);
       const names = new Set(fam ? fam.names : []);
       list = list.filter(s => names.has(s.name));
+    }
+    if (document.getElementById('hidesys').checked) list = list.filter(s => !s.is_system);
+    if (document.getElementById('hidedup').checked) {
+      const dupNames = new Set();
+      try {
+        const groups = await api('/dup/groups?status=open');
+        groups.forEach(g => (g.members || []).forEach(mm => dupNames.add(mm.name)));
+      } catch (e) {}
+      list = list.filter(s => !dupNames.has(s.name));
     }
     document.getElementById('cnt').textContent = `${list.length} 个 skill`;
     document.getElementById('tblbox').innerHTML = `
@@ -167,6 +178,11 @@ async function pageSkills() {
       </tr>`; }).join('') || '<tr><td colspan="6" class="muted">无匹配结果</td></tr>'}
       </tbody></table>`;
   };
+  const hs = document.getElementById('hidesys'), hd = document.getElementById('hidedup');
+  hs.checked = localStorage.getItem('skhub_hidesys') === '1';
+  hd.checked = localStorage.getItem('skhub_hidedup') === '1';
+  hs.addEventListener('change', () => { localStorage.setItem('skhub_hidesys', hs.checked ? '1' : '0'); load(); });
+  hd.addEventListener('change', () => { localStorage.setItem('skhub_hidedup', hd.checked ? '1' : '0'); load(); });
   document.getElementById('q').addEventListener('input', debounce(load, 300));
   document.getElementById('mfilter').addEventListener('change', load);
   document.getElementById('ffilter').addEventListener('change', load);

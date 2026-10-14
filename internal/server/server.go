@@ -275,6 +275,24 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request, parts []st
 			return
 		}
 		writeJSON(w, 200, files)
+	case len(parts) == 3 && parts[2] == "system" && r.Method == "POST":
+		var body struct {
+			IsSystem bool `json:"is_system"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+		id, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			writeErr(w, 400, "bad id")
+			return
+		}
+		if err := s.st.SetSkillSystem(id, body.IsSystem); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
 	case len(parts) == 3 && parts[2] == "diff" && r.Method == "GET":
 		id, _ := strconv.ParseInt(parts[1], 10, 64)
 		from, err1 := strconv.ParseInt(r.URL.Query().Get("from"), 10, 64)

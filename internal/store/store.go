@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS skills (
 	machine_id INTEGER NOT NULL REFERENCES machines(id),
 	description TEXT NOT NULL DEFAULT '',
 	latest_version_id INTEGER,
+	is_system INTEGER NOT NULL DEFAULT 0,
 	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	UNIQUE(name, machine_id)
@@ -141,7 +142,17 @@ CREATE INDEX IF NOT EXISTS idx_jobs_machine ON jobs(machine, status);
 CREATE INDEX IF NOT EXISTS idx_versions_skill ON versions(skill_id, id);
 CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src_id);
 `
-	_, err := s.db.Exec(schema)
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+	// 幂等迁移：旧库补 is_system 列 + 按已知内置名单回填
+	_, _ = s.db.Exec(`ALTER TABLE skills ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0`)
+	_, err := s.db.Exec(`UPDATE skills SET is_system=1 WHERE name IN (
+		'pdf','docx','xlsx','pptx','computer-use','control-browser','web-gui-tester','env-setup',
+		'android-dev','ios-dev','plugin-creator','skill-creator','dynamic-workflows',
+		'video2code','video2code-3d','video2fullstack','url2video','web-replicate','zcode-computer-use',
+		'diagnosing-commands','diagnosing-hooks','diagnosing-mcp','diagnosing-plugins','diagnosing-skills',
+		'zcode-configuration-guide','zcode-guide','restore-legacy-sessions','playground')`)
 	return err
 }
 
@@ -364,12 +375,13 @@ type SkillRow struct {
 	VerCount    int    `json:"version_count"`
 	UpdatedAt   string `json:"updated_at"`
 	CreatedAt   string `json:"created_at"`
+	IsSystem    bool   `json:"is_system"`
 }
 
 func (s *Store) ListSkills(q, machine string) ([]SkillRow, error) {
 	sqlStr := `SELECT sk.id, sk.name, sk.machine_id, m.hostname, sk.description,
 		COALESCE(sk.latest_version_id,0), COALESCE(v.tree_hash,''), sk.created_at, sk.updated_at,
-		(SELECT COUNT(*) FROM versions vv WHERE vv.skill_id=sk.id)
+		(SELECT COUNT(*) FROM versions vv WHERE vv.skill_id=sk.id), sk.is_system
 		FROM skills sk JOIN machines m ON m.id=sk.machine_id
 		LEFT JOIN versions v ON v.id=sk.latest_version_id WHERE 1=1`
 	args := []interface{}{}
@@ -391,7 +403,7 @@ func (s *Store) ListSkills(q, machine string) ([]SkillRow, error) {
 	for rows.Next() {
 		var r SkillRow
 		if err := rows.Scan(&r.ID, &r.Name, &r.MachineID, &r.Machine, &r.Description,
-			&r.LatestVer, &r.TreeHash, &r.CreatedAt, &r.UpdatedAt, &r.VerCount); err != nil {
+			&r.LatestVer, &r.TreeHash, &r.CreatedAt, &r.UpdatedAt, &r.VerCount, &r.IsSystem); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -456,11 +468,11 @@ func (s *Store) GetSkill(skillID int64) (*SkillRow, error) {
 	var r SkillRow
 	err := s.db.QueryRow(`SELECT sk.id, sk.name, sk.machine_id, m.hostname, sk.description,
 		COALESCE(sk.latest_version_id,0), COALESCE(v.tree_hash,''), sk.created_at, sk.updated_at,
-		(SELECT COUNT(*) FROM versions vv WHERE vv.skill_id=sk.id)
+		(SELECT COUNT(*) FROM versions vv WHERE vv.skill_id=sk.id), sk.is_system
 		FROM skills sk JOIN machines m ON m.id=sk.machine_id
 		LEFT JOIN versions v ON v.id=sk.latest_version_id WHERE sk.id=?`, skillID).
 		Scan(&r.ID, &r.Name, &r.MachineID, &r.Machine, &r.Description,
-			&r.LatestVer, &r.TreeHash, &r.CreatedAt, &r.UpdatedAt, &r.VerCount)
+			&r.LatestVer, &r.TreeHash, &r.CreatedAt, &r.UpdatedAt, &r.VerCount, &r.IsSystem)
 	if err != nil {
 		return nil, err
 	}
@@ -645,7 +657,7 @@ func (s *Store) ListDupGroups(status string) ([]DupGroup, error) {
 	for i := range out {
 		mrows, err := s.db.Query(`SELECT sk.id, sk.name, sk.machine_id, m.hostname, sk.description,
 			COALESCE(sk.latest_version_id,0), COALESCE(v.tree_hash,''), sk.created_at, sk.updated_at,
-			(SELECT COUNT(*) FROM versions vv WHERE vv.skill_id=sk.id)
+			(SELECT COUNT(*) FROM versions vv WHERE vv.skill_id=sk.id), sk.is_system
 			FROM dup_members dm JOIN skills sk ON sk.id=dm.skill_id
 			JOIN machines m ON m.id=sk.machine_id
 			LEFT JOIN versions v ON v.id=sk.latest_version_id WHERE dm.group_id=?`, out[i].ID)
@@ -655,7 +667,7 @@ func (s *Store) ListDupGroups(status string) ([]DupGroup, error) {
 		for mrows.Next() {
 			var r SkillRow
 			if err := mrows.Scan(&r.ID, &r.Name, &r.MachineID, &r.Machine, &r.Description,
-				&r.LatestVer, &r.TreeHash, &r.CreatedAt, &r.UpdatedAt, &r.VerCount); err != nil {
+				&r.LatestVer, &r.TreeHash, &r.CreatedAt, &r.UpdatedAt, &r.VerCount, &r.IsSystem); err != nil {
 				mrows.Close()
 				return nil, err
 			}
@@ -974,7 +986,7 @@ func (s *Store) ListFamilies() ([]FamilyRow, error) {
 	for _, x := range ids {
 		mrows, err := s.db.Query(`SELECT sk.id, sk.name, sk.machine_id, m.hostname, sk.description,
 			COALESCE(sk.latest_version_id,0), COALESCE(v.tree_hash,''), sk.created_at, sk.updated_at,
-			(SELECT COUNT(*) FROM versions vv WHERE vv.skill_id=sk.id)
+			(SELECT COUNT(*) FROM versions vv WHERE vv.skill_id=sk.id), sk.is_system
 			FROM family_members fm JOIN skills sk ON sk.id=fm.skill_id
 			JOIN machines m ON m.id=sk.machine_id
 			LEFT JOIN versions v ON v.id=sk.latest_version_id
@@ -985,7 +997,7 @@ func (s *Store) ListFamilies() ([]FamilyRow, error) {
 		for mrows.Next() {
 			var r SkillRow
 			if err := mrows.Scan(&r.ID, &r.Name, &r.MachineID, &r.Machine, &r.Description,
-				&r.LatestVer, &r.TreeHash, &r.CreatedAt, &r.UpdatedAt, &r.VerCount); err != nil {
+				&r.LatestVer, &r.TreeHash, &r.CreatedAt, &r.UpdatedAt, &r.VerCount, &r.IsSystem); err != nil {
 				mrows.Close()
 				return nil, err
 			}
@@ -994,4 +1006,14 @@ func (s *Store) ListFamilies() ([]FamilyRow, error) {
 		mrows.Close()
 	}
 	return out, nil
+}
+
+// SetSkillSystem 标记/取消系统 skill
+func (s *Store) SetSkillSystem(id int64, isSystem bool) error {
+	v := 0
+	if isSystem {
+		v = 1
+	}
+	_, err := s.db.Exec(`UPDATE skills SET is_system=? WHERE id=?`, v, id)
+	return err
 }
