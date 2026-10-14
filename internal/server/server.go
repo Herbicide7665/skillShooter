@@ -60,6 +60,12 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parts := splitPath(strings.TrimPrefix(r.URL.Path, "/api"))
+	// whoami 任何 token（含无效）都返回角色，供客户端/UI 自检
+	if len(parts) == 1 && parts[0] == "whoami" && r.Method == "GET" {
+		ok, role := s.st.TokenRole(r.Header.Get("X-Token"))
+		writeJSON(w, 200, map[string]interface{}{"ok": ok, "role": role})
+		return
+	}
 	// parts[0] 是资源名
 	switch {
 	case len(parts) == 1 && parts[0] == "push" && r.Method == "POST":
@@ -96,7 +102,7 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]interface{}{"skills": skills, "edges": edges})
 	case parts[0] == "edges":
 		if len(parts) == 2 && parts[1] == "scan" && r.Method == "POST" {
-			if !s.checkToken(r) {
+			if !s.requireRole(w, r, true) {
 				writeErr(w, 401, "token 无效")
 				return
 			}
@@ -154,6 +160,50 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 			out = append(out, map[string]interface{}{"key": f.Key, "note": f.Note, "kind": "llm", "names": names, "members": members})
 		}
 		writeJSON(w, 200, out)
+	case parts[0] == "tokens" && r.Method == "GET":
+		if !s.requireRole(w, r, true) {
+			return
+		}
+		ts, err := s.st.ListTokens()
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, ts)
+	case parts[0] == "tokens" && len(parts) == 2 && parts[1] == "create" && r.Method == "POST":
+		if !s.requireRole(w, r, true) {
+			return
+		}
+		var body struct {
+			Role string `json:"role"`
+			Note string `json:"note"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || (body.Role != "admin" && body.Role != "user") {
+			writeErr(w, 400, "role 必须是 admin 或 user")
+			return
+		}
+		tok, err := s.st.CreateRoleToken(body.Role, body.Note)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]string{"token": tok, "role": body.Role})
+	case parts[0] == "tokens" && len(parts) == 2 && parts[1] == "revoke" && r.Method == "POST":
+		if !s.requireRole(w, r, true) {
+			return
+		}
+		var body struct {
+			Token string `json:"token"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Token == "" {
+			writeErr(w, 400, "需要 token")
+			return
+		}
+		if err := s.st.RevokeToken(body.Token); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]string{"ok": "1"})
 	case parts[0] == "canonical" && r.Method == "GET":
 		cs, err := s.st.CanonicalMerges()
 		if err != nil {
@@ -171,6 +221,9 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"glm":       map[string]interface{}{"enabled": cfg.Enabled(), "base_url": cfg.BaseURL, "model": cfg.Model},
 		})
 	case parts[0] == "settings" && len(parts) == 2 && parts[1] == "glm-test" && r.Method == "POST":
+		if !s.requireRole(w, r, true) {
+			return
+		}
 		if !s.llm.Config().Enabled() {
 			writeErr(w, 400, "GLM 未配置（config.yaml 或 env 无 key）")
 			return
@@ -197,7 +250,28 @@ func splitPath(p string) []string {
 }
 
 func (s *Server) checkToken(r *http.Request) bool {
-	return s.st.CheckToken(r.Header.Get("X-Token"))
+	ok, _ := s.st.TokenRole(r.Header.Get("X-Token"))
+	return ok
+}
+
+// checkAdmin 管理员校验
+func (s *Server) checkAdmin(r *http.Request) bool {
+	ok, role := s.st.TokenRole(r.Header.Get("X-Token"))
+	return ok && role == "admin"
+}
+
+// requireRole 通用门：校验并写 401/403
+func (s *Server) requireRole(w http.ResponseWriter, r *http.Request, admin bool) bool {
+	ok, role := s.st.TokenRole(r.Header.Get("X-Token"))
+	if !ok {
+		writeErr(w, 401, "token 无效")
+		return false
+	}
+	if admin && role != "admin" {
+		writeErr(w, 403, "需要管理员权限")
+		return false
+	}
+	return true
 }
 
 // ---- skills ----
@@ -276,6 +350,9 @@ func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request, parts []st
 		}
 		writeJSON(w, 200, files)
 	case len(parts) == 3 && parts[2] == "system" && r.Method == "POST":
+		if !s.requireRole(w, r, true) {
+			return
+		}
 		var body struct {
 			IsSystem bool `json:"is_system"`
 		}
@@ -563,7 +640,7 @@ func parseFrontmatter(md string) (name, desc string) {
 func (s *Server) handleDup(w http.ResponseWriter, r *http.Request, parts []string) {
 	switch {
 	case len(parts) == 2 && parts[1] == "scan" && r.Method == "POST":
-		if !s.checkToken(r) {
+		if !s.requireRole(w, r, true) {
 			writeErr(w, 401, "token 无效")
 			return
 		}
@@ -593,7 +670,7 @@ func (s *Server) handleDup(w http.ResponseWriter, r *http.Request, parts []strin
 		}
 		writeJSON(w, 200, gs)
 	case len(parts) == 4 && parts[1] == "groups" && parts[3] == "merge-proposal" && r.Method == "POST":
-		if !s.checkToken(r) {
+		if !s.requireRole(w, r, true) {
 			writeErr(w, 401, "token 无效")
 			return
 		}
@@ -609,7 +686,7 @@ func (s *Server) handleDup(w http.ResponseWriter, r *http.Request, parts []strin
 		}
 		writeJSON(w, 200, p)
 	case len(parts) == 4 && parts[1] == "groups" && parts[3] == "adopt" && r.Method == "POST":
-		if !s.checkToken(r) {
+		if !s.requireRole(w, r, true) {
 			writeErr(w, 401, "token 无效")
 			return
 		}
@@ -636,7 +713,7 @@ func (s *Server) handleDup(w http.ResponseWriter, r *http.Request, parts []strin
 		}
 		writeJSON(w, 200, map[string]int64{"version_id": vid})
 	case len(parts) == 4 && parts[1] == "groups" && parts[3] == "dismiss" && r.Method == "POST":
-		if !s.checkToken(r) {
+		if !s.requireRole(w, r, true) {
 			writeErr(w, 401, "token 无效")
 			return
 		}
@@ -725,6 +802,9 @@ func (s *Server) handleFileDL(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request, parts []string) {
 	switch {
 	case len(parts) == 1 && r.Method == "POST":
+		if !s.requireRole(w, r, true) {
+			return
+		}
 		var body struct {
 			Machine string `json:"machine"`
 			Skill   string `json:"skill"`
@@ -751,6 +831,10 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request, parts []stri
 		machine := r.URL.Query().Get("machine")
 		if machine == "" {
 			writeErr(w, 400, "需要 machine")
+			return
+		}
+		if _, role := s.st.TokenRole(r.Header.Get("X-Token")); role != "admin" {
+			writeJSON(w, 200, map[string]interface{}{"id": 0}) // user 角色 daemon 不领取远程任务
 			return
 		}
 		job, err := s.st.NextJob(machine)
@@ -833,17 +917,20 @@ func (s *Server) handleClientDL(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, "服务端缺少该平台二进制: "+err.Error())
 		return
 	}
-	token, err := s.st.EnsureToken()
-	if err != nil {
-		writeErr(w, 500, err.Error())
-		return
+	// 内嵌"请求者自己的 token"：普通用户下载的客户端带 user token（不能下发任务），
+	// 若用管理员主 token 内嵌则任何持有 user token 的人都能提权下载到 admin 客户端
+	_, reqRole := s.st.TokenRole(r.Header.Get("X-Token"))
+	embedToken := r.Header.Get("X-Token")
+	if reqRole == "admin" {
+		// 管理员下载：内嵌主 token（保持既有行为）
+		embedToken, _ = s.st.EnsureToken()
 	}
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
 	}
 	server := scheme + "://" + r.Host
-	out, err := daemon.AppendConfig(bin, server, token)
+	out, err := daemon.AppendConfig(bin, server, embedToken)
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return

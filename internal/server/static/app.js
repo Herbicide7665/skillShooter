@@ -536,12 +536,20 @@ async function pageSettings() {
       <p class="small muted">下载的二进制<b>已内嵌本 Hub 地址与接入配置</b>：放到任意目录，Windows 直接双击 — 托盘出现蓝色图标（右键：打开 Hub / 立即同步 / 退出），自动全盘推送本机 skill、增量同步、应用云端合并、接收远程调用。Linux/macOS：<code class="inline">chmod +x skill-hub && ./skill-hub</code>。<b>开机自启</b>：Win+R 输入 <code class="inline">shell:startup</code>，给 exe 创建快捷方式放进去。配置同时落在 <code class="inline">~/.skill-hub/config.json</code> 可查看。</p>
     </div>
     <div class="panel">
-      <h2 style="margin-top:0">接入 Token</h2>
-      <p class="small muted">其他机器运行 push 时携带此 token（header X-Token）。</p>
+      <h2 style="margin-top:0">接入 Token（管理员主凭据）</h2>
+      <p class="small muted">管理员 token：可执行一切操作（远程调用下发、去重合并、GLM 重构、创建用户 token）。</p>
       <div class="toolbar">
         <input type="text" readonly value="${esc(s.token)}" style="min-width:420px;font-family:var(--mono)" id="tokinput">
         <button onclick="navigator.clipboard.writeText(document.getElementById('tokinput').value).then(()=>toast('已复制'))">复制</button>
       </div>
+      <h2>用户 Token 管理</h2>
+      <p class="small muted">用户 token：仅能同步 skill 数据（push/pull/读取），<b>不能下发远程调用任务</b>；其客户端也不会领取执行任务。新 token 只显示一次。</p>
+      <div class="toolbar">
+        <input type="text" id="newtoknote" placeholder="备注（如：VM1）" style="min-width:160px">
+        <button class="primary" id="mkuser">创建用户 token</button>
+        <span id="newtokout" class="mono small"></span>
+      </div>
+      <table class="tbl" id="toktbl"><thead><tr><th>Token</th><th>角色</th><th>备注</th><th>创建时间</th><th></th></tr></thead><tbody></tbody></table>
     </div>
     <div class="panel">
       <h2 style="margin-top:0">GLM 接入</h2>
@@ -586,6 +594,36 @@ async function pageSettings() {
       <p class="small muted">在目标机器终端执行即可常驻（加 nohup 或做成开机任务更佳）；执行后该机器的 skill 变更 30 秒内自动上云、hub 合并结果自动落回本地、可从本页远程调用其 skill。</p>
     </div>`;
   // 已配置客户端下载：服务端把 server/token 追加进二进制尾部
+  // 用户 token 管理
+  const loadTokens = async () => {
+    try {
+      const ts = await api('/tokens');
+      const tb = document.querySelector('#toktbl tbody');
+      if (!tb) return;
+      tb.innerHTML = ts.map(t => `<tr>
+        <td class="mono small">${esc(t.token_masked)}</td>
+        <td><span class="badge ${t.role === 'admin' ? 'b-merged' : 'b-machine'}">${esc(t.role)}</span></td>
+        <td>${esc(t.note || '')}</td>
+        <td class="muted small">${esc(fmtTime(t.created_at))}</td>
+        <td><button onclick="window._revokeTok('${esc(t.token_masked)}')">吊销</button></td>
+      </tr>`).join('') || '<tr><td colspan="5" class="muted small">暂无角色 token（现有各客户端用主 token）</td></tr>';
+    } catch (e) { /* 非 admin 忽略 */ }
+  };
+  loadTokens();
+  const mkBtn = document.getElementById('mkuser');
+  if (mkBtn) mkBtn.onclick = async () => {
+    const note = document.getElementById('newtoknote').value.trim();
+    try {
+      const r = await apiPost('/tokens/create', { role: 'user', note });
+      document.getElementById('newtokout').innerHTML = `<span style="color:var(--ok)">新 token（仅此一次显示）：</span><input readonly value="${esc(r.token)}" style="width:340px;font-family:var(--mono)">`;
+      loadTokens();
+    } catch (e) { toast(e.message, true); }
+  };
+  window._revokeTok = async masked => {
+    if (!confirm('吊销该 token？对应客户端将立即失去访问。')) return;
+    try { await apiPost('/tokens/revoke', { token: masked }); loadTokens(); toast('已吊销'); }
+    catch (e) { toast(e.message, true); }
+  };
   window._dlClient = async name => {
     try {
       toast('正在生成已配置客户端…');

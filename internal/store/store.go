@@ -126,6 +126,13 @@ CREATE TABLE IF NOT EXISTS family_members (
 	PRIMARY KEY(family_id, skill_id)
 );
 
+CREATE TABLE IF NOT EXISTS tokens (
+	token TEXT PRIMARY KEY,
+	role TEXT NOT NULL DEFAULT 'user',
+	note TEXT NOT NULL DEFAULT '',
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS jobs (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	machine TEXT NOT NULL,
@@ -216,9 +223,77 @@ func (s *Store) EnsureToken() (string, error) {
 	return tok, s.SetMeta("push_token", tok)
 }
 
+// CheckToken 检查 token 有效性（兼容 meta 里的主 token = admin，以及 tokens 表角色 token）
 func (s *Store) CheckToken(tok string) bool {
-	real, err := s.GetMeta("push_token")
-	return err == nil && real != "" && tok == real
+	_, role := s.TokenRole(tok)
+	return role != ""
+}
+
+// TokenRole 返回 (有效, 角色)：主 token→admin，tokens 表→其角色，无效→("", "")
+func (s *Store) TokenRole(tok string) (bool, string) {
+	if tok == "" {
+		return false, ""
+	}
+	if real, err := s.GetMeta("push_token"); err == nil && real != "" && tok == real {
+		return true, "admin"
+	}
+	var role string
+	err := s.db.QueryRow(`SELECT role FROM tokens WHERE token=?`, tok).Scan(&role)
+	if err != nil {
+		return false, ""
+	}
+	if role != "admin" && role != "user" {
+		return false, ""
+	}
+	return true, role
+}
+
+// CreateRoleToken 新建角色 token（返回明文一次）
+func (s *Store) CreateRoleToken(role, note string) (string, error) {
+	if role != "admin" && role != "user" {
+		return "", fmt.Errorf("role 必须是 admin 或 user")
+	}
+	b := make([]byte, 24)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	tok := hex.EncodeToString(b)
+	_, err := s.db.Exec(`INSERT INTO tokens(token, role, note) VALUES(?,?,?)`, tok, role, note)
+	return tok, err
+}
+
+// ListTokens token 列表（脱敏展示）
+func (s *Store) ListTokens() ([]map[string]interface{}, error) {
+	rows, err := s.db.Query(`SELECT token, role, note, created_at FROM tokens ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []map[string]interface{}{}
+	for rows.Next() {
+		var tok, role, note, created string
+		if err := rows.Scan(&tok, &role, &note, &created); err != nil {
+			return nil, err
+		}
+		masked := tok
+		if len(tok) > 10 {
+			masked = tok[:6] + "…" + tok[len(tok)-4:]
+		}
+		out = append(out, map[string]interface{}{"token_masked": masked, "role": role, "note": note, "created_at": created})
+	}
+	return out, rows.Err()
+}
+
+// RevokeToken 吊销
+func (s *Store) RevokeToken(maskedOrFull string) error {
+	// 支持传脱敏形式：按前缀+后缀匹配
+	if strings.Contains(maskedOrFull, "…") {
+		parts := strings.SplitN(maskedOrFull, "…", 2)
+		_, err := s.db.Exec(`DELETE FROM tokens WHERE substr(token,1,6)=? AND substr(token,-4)=?`, parts[0], parts[1])
+		return err
+	}
+	_, err := s.db.Exec(`DELETE FROM tokens WHERE token=?`, maskedOrFull)
+	return err
 }
 
 // UpsertMachine 记录推送来源机器（先查后插，规避 upsert 分支 LastInsertId 脏值）
