@@ -203,6 +203,8 @@ async function pageSkillDetail(rest) {
       <div class="k">当前树哈希</div><div class="mono">${esc(s.tree_hash)}</div>
       <div class="k">版本数</div><div>${s.version_count}</div>
       <div class="k">收录 / 更新</div><div>${esc(fmtTime(s.created_at))} → ${esc(fmtTime(s.updated_at))}</div>
+      <div class="k">系统 skill</div><div><span id="sysmark" class="badge ${s.is_system ? 'b-push' : 'b-open'}">${s.is_system ? '是' : '否'}</span>
+        <button style="margin-left:8px" onclick="window._toggleSys(${s.id}, ${s.is_system ? 'false' : 'true'})">${s.is_system ? '取消系统标记' : '标记为系统 skill'}</button></div>
     </div>
 
     <h2>版本时间线（演变路线）</h2>
@@ -295,6 +297,14 @@ async function pageSkillDetail(rest) {
     }).join('');
   }
 }
+
+window._toggleSys = async (id, val) => {
+  try {
+    await apiPost(`/skills/${id}/system`, { is_system: val });
+    toast(val ? '已标记为系统 skill' : '已取消系统标记');
+    location.reload();
+  } catch (e) { toast(e.message, true); }
+};
 
 /* ---------- 关系图 ---------- */
 async function pageGraph() {
