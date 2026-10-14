@@ -55,3 +55,38 @@
 ## 六、结论
 
 核心安全边界（token 门覆盖、路径穿越、注入转义）经动态回归全部通过；5 个确认 bug 已修复部署。当前形态适合个人/可信内网长期运行；若公开到公网，按第五节第 1 条加固后再暴露。
+
+## 七、增量安全审计：权限模型（2026-10-14，范围：任务3新增的 admin/user 双角色体系）
+
+### 7.1 权限模型设计复核
+
+- **token 源**：meta.push_token（主 token，恒为 admin）+ tokens 表角色 token（admin/user）。TokenRole() 先比主 token 再查表，查表有 role 白名单校验（非 admin/user 即无效）✅
+- **admin-only 面收敛**：POST /api/jobs、dup/scan、dup/groups/{merge-proposal,adopt,dismiss}、edges/scan、skills/{id}/system、settings/glm-test、tokens*（GET/create/revoke）— 共 10 个端点全部 requireRole(admin) ✅
+- **user 可达面**：读端点、push、jobs/next（返回 id=0 空任务）、jobs/{id}/result、client 下载 ✅
+- **关键提权面——/api/client/ 内嵌 token**：已改为内嵌**请求者自己的 token**（admin 下载内嵌主 token，user 下载内嵌 user token）。动态验证：user 下载的客户端尾部 JSON 内含 user token 且**不含** admin 主 token ✅（注意验证方法：marker 位置可能在尾部 300 字节之外，应在尾部 64KB 内找 marker 再查）
+
+### 7.2 动态验证（本地实测，全部通过）
+
+| 攻击场景 | 结果 |
+|---|---|
+| user token 打全部 admin 端点（jobs/dup-scan/tokens-create/tokens-list 等） | 全部 403 ✅ |
+| user token 变体（前后空格） | 403/401，拒绝 ✅ |
+| 伪造 admin 变体 token（末位改动） | 401 ✅ |
+| user 尝试自我提权创建 admin token | 403 ✅ |
+| user 尝试吊销主 token | 403 ✅（主 token 不在 tokens 表，且 revoke 需 admin） |
+| user 下载客户端内嵌 user token（非 admin） | ✅ 无提权 |
+| SQL 注入（搜索参数 / token 字段） | 参数化查询，401/正常业务 ✅ |
+| 存储型 XSS（push 恶意 description） | API 按设计存原文，前端 esc() 覆盖（见第一章）✅ |
+| token 吊销时效 | 吊销后立即 401 ✅ |
+| whoami 免 token | 设计（只回显角色状态，不泄露信息）✅ |
+
+### 7.3 新增风险与建议
+
+1. **中**：user token 的 daemon 以 machine 名认领任务……user 角色返回空任务已堵住执行面，但 user token 仍可调用 GET /api/jobs 看到任务列表（元信息泄露：任务提示词对 user 可见）。建议：jobs 列表 admin-only（未实施，留待需要时）
+2. **低**：tokens/create 支持 admin 角色意味着 admin 可造第二个 admin token——合理功能，但建议 UI 文案提示主 token 不可吊销（当前确实不可，主 token 不在表内）
+3. **低**：RevokeToken 按掩码（前6后4）匹配删除——48hex 下 6+4 字符碰撞概率可忽略，可接受
+4. **信息**：daemon 命令行含明文 token（ps 可见）——单用户机器可接受；若要收敛可改环境变量传递
+
+### 7.4 结论
+
+权限模型实现与设计一致，动态攻击面验证 10/10 通过，无发现可利用提权路径。主风险不变：**admin token = 全部客户端执行权**（设计本质），务必妥善保管。
