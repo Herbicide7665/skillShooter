@@ -192,3 +192,5 @@ skill-hub.exe（单二进制）
 变更：ScanSkills/CollectSkillMD/SignatureSkillMD 全部只针对 SKILL.md（签名=size+mtime，不读内容不遍历子树）；push 只上传 SKILL.md；pull/apply 只替换目标目录的 SKILL.md（**不再 RemoveAll 整个目录** — 本机脚本/产物归本机所有）。媒体过滤、大小预算、运行时目录忽略等历史机制被此收窄完全涵盖（保留代码无副作用）。
 
 效果：版本历史 = 纯 SKILL.md 演变史；数据产物（如 bijia transcripts）彻底无感；daemon CPU 进一步下降（签名只 stat 一个文件）；库体积停止吸收资产文件。回归实测：push 17 skills → version_files 恰 17 条且 path 全为 SKILL.md。历史旧版本（含全目录收集的）保留不受影响，diff 仍基于 SKILL.md。
+
+库体积终态：历史 637 个版本全部裁剪为仅 SKILL.md（剔 14831 个非核心文件行），blobs 899MB→5.1MB，db 952MB→6MB，磁盘 87%。
