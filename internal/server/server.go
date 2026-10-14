@@ -54,16 +54,16 @@ func (s *Server) Serve(mux *http.ServeMux) {
 // ---- 简易路由 ----
 
 func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
-	// 公网部署：所有 API（含读）都要 token，防内容裸奔
-	if !s.checkToken(r) {
-		writeErr(w, 401, "token 无效")
-		return
-	}
 	parts := splitPath(strings.TrimPrefix(r.URL.Path, "/api"))
 	// whoami 任何 token（含无效）都返回角色，供客户端/UI 自检
 	if len(parts) == 1 && parts[0] == "whoami" && r.Method == "GET" {
 		ok, role := s.st.TokenRole(r.Header.Get("X-Token"))
 		writeJSON(w, 200, map[string]interface{}{"ok": ok, "role": role})
+		return
+	}
+	// 公网部署：所有 API（含读）都要 token，防内容裸奔
+	if !s.checkToken(r) {
+		writeErr(w, 401, "token 无效")
 		return
 	}
 	// parts[0] 是资源名
