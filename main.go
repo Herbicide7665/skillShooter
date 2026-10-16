@@ -127,6 +127,9 @@ func main() {
 		cmdDaemon(os.Args[2:])
 	case "config":
 		cmdConfig(os.Args[2:])
+	case "dlgtest":
+		daemon.ShowConfigDialog(daemon.ClientConfig{})
+		fmt.Println("dialog flow done")
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -348,7 +351,7 @@ func runClientDefault() {
 	} else if cfgOK {
 		// 仅 config.json 有效：直接用
 	} else {
-		// 首次使用：Windows 弹原生配置窗完成初始配置
+		// 首次使用：Windows 弹提示并拉起终端配置向导
 		if !daemon.ShowConfigDialog(daemon.ClientConfig{}) {
 			daemon.AlertNoConfig()
 			os.Exit(1)

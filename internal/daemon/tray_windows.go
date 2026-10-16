@@ -69,18 +69,23 @@ func RunTray(opt Options) error {
 				case <-mOpen.ClickedCh:
 					exec.Command("rundll32", "url.dll,FileProtocolHandler", opt.Server).Start()
 				case <-mConf.ClickedCh:
-					if cur, okc := LoadClientConfig(); okc || true {
-						if ShowConfigDialog(cur) {
+					cur, _ := LoadClientConfig()
+					if ShowConfigDialog(cur) {
+						// 配置窗（终端问答）已关闭：重新读配置，有变化则重启进程生效
+						nc, ok2 := LoadClientConfig()
+						if ok2 && (nc.Server != cur.Server || nc.Token != cur.Token || nc.Hostname != cur.Hostname ||
+							nc.HeartbeatSec != cur.HeartbeatSec || nc.Interval != cur.Interval || nc.ApplyInterval != cur.ApplyInterval) {
 							log("配置已更新，重启客户端…")
 							if h, err := os.Executable(); err == nil {
-								if proc := exec.Command(h); proc != nil {
-									proc.Start()
-								}
+								exec.Command(h).Start()
 							}
 							close(opt.Stop)
 							systray.Quit()
 							return
 						}
+						toast := "配置未变化，客户端继续运行"
+						_ = toast
+						log("配置未变化，继续运行")
 					}
 				case <-mSync.ClickedCh:
 					select {
