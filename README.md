@@ -1,4 +1,6 @@
-# Skill Hub — 跨机 Agent Skill 管理平台
+# Skill Manager — 跨机 Agent Skill 管理平台
+
+> **2026-10-16 更名**：本项目原名 skill-hub，因 GitHub 同名项目冲突更名为 **Skill Manager**（二进制 `skill-manager`，数据目录 `~/.skill-manager`，数据库 `skillmanager.db`）。旧 token、旧数据库自动兼容。
 
 一个单二进制、零依赖的自托管 web 平台，用于集中管理散落在多台机器、多个 agent 工具（ZCode / Claude Code 等）里的 skill（每个 skill = 一个含 `SKILL.md` 的目录）。
 
@@ -6,22 +8,22 @@
 
 - **双模式单二进制**：`serve` 起 web 服务，`push` 从任意机器上传 skill，复制 exe 即接入
 - **版本与演变路线**：每次 push 按目录树 sha256 内容寻址，内容变化才存新版本，全历史永久保留；任意两版本 unified diff
-- **智能去重**：精确哈希分组 + 名称/描述相似度预筛（中文 bigram Jaccard）+ GLM 逐对判定（给置信度与理由）
-- **智能合并**：GLM 生成合并版 SKILL.md 建议，UI 预览 + diff 对比，人工点「采纳」才落新版本（`merged` 标记 + 记录来源版本），绝不自动覆盖
-- **关联关系**：解析 SKILL.md 正文引用建边 + GLM 归纳 related（相关）与 chain（调用链）边；vis-network 力导向图展示
-- **优雅降级**：GLM 未配置/欠费时，去重退化到预筛、合并与关系归纳不可用，其余功能完整
+- **智能去重**：精确哈希分组 + 名称/描述相似度预筛（中文 bigram Jaccard）+ LLM 逐对判定（给置信度与理由）
+- **智能合并**：LLM 生成合并版 SKILL.md 建议，UI 预览 + diff 对比，人工点「采纳」才落新版本（`merged` 标记 + 记录来源版本），绝不自动覆盖
+- **关联关系**：解析 SKILL.md 正文引用建边 + LLM 归纳 related（相关）与 chain（调用链）边；vis-network 力导向图展示
+- **优雅降级**：LLM 未配置/欠费时，去重退化到预筛、合并与关系归纳不可用，其余功能完整
 
 ## 当前部署（2026-10-13）
 
-**中心 hub 已部署在 VPS：http://your-server:8790**（所有 API 含读都需 token，UI 首次访问弹窗输入；token 见 VPS `<server-dir>/serve.log` 或 `.token` 文件）。
+**中心 hub 已部署在 VPS：http://your-server:8790**（所有 API 含读都需 token，UI 用账号登录（初始 admin 账号密码打印在启动日志）；token 见 VPS `<server-dir>/serve.log` 或 `.token` 文件）。
 
 - 已接入机器：`vps`（cron 每日 18:30 全盘自推）、`your-host`（双击 `push-here.bat` 全盘手动推）
 - **新机器接入 = 打开 hub 设置页，复制一条命令到目标机器终端执行**（token 已注入命令）：
   - Linux / macOS / Git Bash：`curl -fsSL http://your-server:8790/agent.sh | sh -s -- --server ... --token ...`
   - Windows PowerShell：`iwr agent.ps1` 引导脚本
-  - 脚本自动：下载二进制到 `~/.skill-hub/` → 全盘发现本机 skill 目录（.agents/.claude/.zcode 插件缓存）→ 逐一推送。重复执行安全
+  - 脚本自动：下载二进制到 `~/.skill-manager/` → 全盘发现本机 skill 目录（.agents/.claude/.zcode 插件缓存）→ 逐一推送。重复执行安全
 - **常驻客户端**（推荐每台机器都跑）：设置页复制 daemon 命令执行即可——增量监控推送（30s）+ 自动应用云端合并（5min，源变体门控防覆盖手工修改）+ 接收远程 skill 调用
-- 手动分发：`skill-hub pull --server ... --token ... --dest ~/.agents/skills`
+- 手动分发：`skill-manager pull --server ... --token ... --dest ~/.agents/skills`
 - **远程调用**：UI「远程调用」页选机器+skill+提示词下发；目标机器 daemon 拉起 claude/zcode -p 执行并回传 asdste100 报告
 - 采集范围：仅 SKILL.md 核心文档（二进制客户端同理）；本机脚本与数据产物永不入库
 
@@ -30,8 +32,8 @@
 ### 服务端（一次）
 
 ```bash
-skill-hub.exe serve                # 默认 0.0.0.0:8790，数据/配置在二进制同目录
-# 可选: skill-hub.exe serve --addr 0.0.0.0:9000 --db D:/data/skillhub.db
+skill-manager.exe serve                # 默认 0.0.0.0:8790，数据/配置在二进制同目录
+# 可选: skill-manager.exe serve --addr 0.0.0.0:9000 --db D:/data/skillmanager.db
 ```
 
 打开 `http://127.0.0.1:8790` → 设置页复制**接入 Token**。
@@ -39,11 +41,11 @@ skill-hub.exe serve                # 默认 0.0.0.0:8790，数据/配置在二�
 ### 其他机器接入（三步）
 
 ```bash
-# 1. 复制 skill-hub.exe 到目标机器（无任何运行时依赖）
+# 1. 复制 skill-manager.exe 到目标机器（无任何运行时依赖）
 # 2. 在设置页拿 token（X-Token）
 # 3. 扫描推送（可多次、可多目录；--hostname 自定义来源标记）
-skill-hub push --server http://SERVER_IP:8790 --token TOKEN --path ~/.agents/skills --hostname my-laptop
-skill-hub push --server http://SERVER_IP:8790 --token TOKEN --path ~/.zcode/cli/plugins/cache/zcode-plugins-official
+skill-manager push --server http://SERVER_IP:8790 --token TOKEN --path ~/.agents/skills --hostname my-laptop
+skill-manager push --server http://SERVER_IP:8790 --token TOKEN --path ~/.zcode/cli/plugins/cache/zcode-plugins-official
 ```
 
 递归扫描目录下**所有深度**含 `SKILL.md` 的子目录（插件缓存的多层嵌套也能处理）。**采集范围 = 仅 SKILL.md 核心文档**：目录内脚本/产物/参考文件不进版本系统（归属本机所有），版本历史即 SKILL.md 演变史 — 体积小、无数据产物噪音。
@@ -53,12 +55,12 @@ skill-hub push --server http://SERVER_IP:8790 --token TOKEN --path ~/.zcode/cli/
 `config.yaml`（与二进制同目录，已被 .gitignore）：
 
 ```yaml
-glm_api_key: "你的key"
-glm_base_url: "https://open.bigmodel.cn/api/paas/v4"   # 若 key 只在 anthropic 端点有余额，改 https://open.bigmodel.cn/api/anthropic/v1
-glm_model: "glm-5.3-flash"
+llm_api_key: "你的key"
+llm_base_url: "https://open.bigmodel.cn/api/paas/v4"   # 若 key 只在 anthropic 端点有余额，改 https://open.bigmodel.cn/api/anthropic/v1
+llm_model: "glm-5.3-flash"
 ```
 
-环境变量 `GLM_API_KEY` / `ZHIPUAI_API_KEY` 优先于文件。base_url 含 `/anthropic` 时自动走 Anthropic messages 协议（含 GLM 思考块禁用）。设置页有「测试连通性」按钮。
+环境变量 `SKILLMANAGER_LLM_API_KEY` / `ZHIPUAI_API_KEY` 优先于文件。base_url 含 `/anthropic` 时自动走 Anthropic messages 协议（含 GLM 思考块禁用）。设置页有「测试连通性」按钮。
 
 ## 页面
 
@@ -110,10 +112,10 @@ POST /api/settings/glm-test             GLM 连通测试
 
 ## 数据与运维
 
-- 全部数据在二进制同目录：`skillhub.db`（SQLite/WAL，内容寻址 blob 存储）+ `config.yaml`
-- 备份 = 拷走 `skillhub.db` 一个文件；迁移 = 拷走 db + exe
-- 停止服务：`taskkill //IM skill-hub.exe //F`（Windows）/ `pkill skill-hub`（Linux）
-- 上 VPS 建议：`nohup ./skill-hub serve > serve.log 2>&1 &` + nginx 反代加 TLS；端口放行防火墙即可，无需数据库服务
+- 全部数据在二进制同目录：`skillmanager.db`（SQLite/WAL，内容寻址 blob 存储）+ `config.yaml`
+- 备份 = 拷走 `skillmanager.db` 一个文件；迁移 = 拷走 db + exe
+- 停止服务：`taskkill //IM skill-manager.exe //F`（Windows）/ `pkill skill-manager`（Linux）
+- 上 VPS 建议：`nohup ./skill-manager serve > serve.log 2>&1 &` + nginx 反代加 TLS；端口放行防火墙即可，无需数据库服务
 
 ## 已知限制
 

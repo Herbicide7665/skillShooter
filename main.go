@@ -16,12 +16,11 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"skill-hub/internal/daemon"
-	"skill-hub/internal/llm"
-	"skill-hub/internal/pusher"
-	"skill-hub/internal/server"
-	"skill-hub/internal/store"
-)
+	"skill-manager/internal/daemon"
+	"skill-manager/internal/llm"
+	"skill-manager/internal/pusher"
+	"skill-manager/internal/server"
+	"skill-manager/internal/store")
 
 // Config config.yaml
 type Config struct {
@@ -38,15 +37,23 @@ func exeDir() string {
 
 func loadConfig() Config {
 	var cfg Config
-	cfg.LLM.BaseURL = os.Getenv("SKILLHUB_GLM_BASE_URL")
-	cfg.LLM.Model = os.Getenv("SKILLHUB_GLM_MODEL")
-	// env 优先
-	if k := os.Getenv("GLM_API_KEY"); k != "" {
+	cfg.LLM.BaseURL = os.Getenv("SKILLMANAGER_LLM_BASE_URL")
+	cfg.LLM.Model = os.Getenv("SKILLMANAGER_LLM_MODEL")
+	// env 优先；兼容旧命名 GLM_API_KEY / ZHIPUAI_API_KEY
+	if k := os.Getenv("LLM_API_KEY"); k != "" {
+		cfg.LLM.APIKey = k
+	} else if k := os.Getenv("GLM_API_KEY"); k != "" {
 		cfg.LLM.APIKey = k
 	} else if k := os.Getenv("ZHIPUAI_API_KEY"); k != "" {
 		cfg.LLM.APIKey = k
 	}
-	// config.yaml 与二进制同目录
+	if cfg.LLM.BaseURL == "" {
+		cfg.LLM.BaseURL = os.Getenv("SKILLMANAGER_GLM_BASE_URL")
+	}
+	if cfg.LLM.Model == "" {
+		cfg.LLM.Model = os.Getenv("SKILLMANAGER_GLM_MODEL")
+	}
+	// config.yaml 与二进制同目录（新键 llm_*；兼容旧 glm_* 键）
 	path := filepath.Join(exeDir(), "config.yaml")
 	if data, err := os.ReadFile(path); err == nil {
 		var fc Config
@@ -61,12 +68,42 @@ func loadConfig() Config {
 				cfg.LLM.Model = fc.LLM.Model
 			}
 		}
+		if cfg.LLM.APIKey == "" || cfg.LLM.BaseURL == "" || cfg.LLM.Model == "" {
+			var legacy struct {
+				APIKey  string `yaml:"glm_api_key"`
+				BaseURL string `yaml:"glm_base_url"`
+				Model   string `yaml:"glm_model"`
+			}
+			if err := yaml.Unmarshal(data, &legacy); err == nil {
+				if cfg.LLM.APIKey == "" {
+					cfg.LLM.APIKey = legacy.APIKey
+				}
+				if cfg.LLM.BaseURL == "" {
+					cfg.LLM.BaseURL = legacy.BaseURL
+				}
+				if cfg.LLM.Model == "" {
+					cfg.LLM.Model = legacy.Model
+				}
+			}
+		}
 	}
+	// 不再绑死任何厂商：base_url 缺省给 OpenAI 官方端点，model 未配置则 LLM 功能关闭
 	if cfg.LLM.BaseURL == "" {
-		cfg.LLM.BaseURL = "https://open.bigmodel.cn/api/paas/v4"
+		cfg.LLM.BaseURL = "https://api.openai.com/v1"
 	}
-	if cfg.LLM.Model == "" {
-		cfg.LLM.Model = "glm-5.3-flash"
+	return cfg
+}
+
+// applyLLMOverrides 设置页（meta 表）保存的 LLM 配置覆盖 config.yaml（env 在 loadConfig 里已最优先）
+func applyLLMOverrides(cfg Config, st *store.Store) Config {
+	for _, m := range []struct{ key string; dst *string }{
+		{"llm_api_key", &cfg.LLM.APIKey},
+		{"llm_base_url", &cfg.LLM.BaseURL},
+		{"llm_model", &cfg.LLM.Model},
+	} {
+		if v, err := st.GetMeta(m.key); err == nil && v != "" {
+			*m.dst = v
+		}
 	}
 	return cfg
 }
@@ -98,19 +135,19 @@ func main() {
 }
 
 func usage() {
-	fmt.Print(`skill-hub — 跨机 Agent Skill 管理平台
+	fmt.Print(`skill-manager — 跨机 Agent Skill 管理平台
 
 用法:
-  skill-hub serve  [--addr 0.0.0.0:8790] [--db skillhub.db]
+  skill-manager serve  [--addr 0.0.0.0:8790] [--db skillmanager.db]
       启动 web 服务（数据与 config.yaml 就在二进制同目录；启动日志含接入 token）
-  skill-hub push --server URL --token TOKEN --path <目录> [--hostname 名字]
+  skill-manager push --server URL --token TOKEN --path <目录> [--hostname 名字]
       递归扫描目录下所有含 SKILL.md 的子目录并上传
-  skill-hub pull --server URL --token TOKEN --dest <目录> [--machine 名字] [--overwrite] [--assigned]
+  skill-manager pull --server URL --token TOKEN --dest <目录> [--machine 名字] [--overwrite] [--assigned]
       把 hub 上全部（或某机器的）skill 最新版本拉回本地（合并成果分发）
       --assigned: 只拉"分配给本机"的 skill 集合（--machine 填本机名，落盘 --dest）
-  skill-hub upload --server URL --token TOKEN --path <目录> [--hostname 名字]
+  skill-manager upload --server URL --token TOKEN --path <目录> [--hostname 名字]
       上传本地 skill 到后台（等价 push，语义化别名）
-  skill-hub daemon --server URL --token TOKEN [--hostname 名字] [选项]
+  skill-manager daemon --server URL --token TOKEN [--hostname 名字] [选项]
       常驻客户端：增量监控本机 agent 目录推送 + 应用云端合并结果 + 部署分配 skill + 心跳探活 + 接收远程 skill 调用
       选项: --interval 30  --apply-interval 300  --job-poll 5  --heartbeat 1800  --roots 路径1,路径2
             --no-watch / --no-apply / --no-jobs / --no-heartbeat
@@ -120,12 +157,12 @@ func usage() {
 func cmdServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	addr := fs.String("addr", "0.0.0.0:8790", "监听地址")
-	dbPath := fs.String("db", "", "SQLite 路径（默认二进制同目录 skillhub.db）")
+	dbPath := fs.String("db", "", "SQLite 路径（默认二进制同目录 skillmanager.db）")
 	fs.Parse(args)
 
 	dir := exeDir()
 	if *dbPath == "" {
-		*dbPath = filepath.Join(dir, "skillhub.db")
+		*dbPath = filepath.Join(dir, "skillmanager.db")
 	}
 	st, err := store.Open(*dbPath)
 	if err != nil {
@@ -137,10 +174,19 @@ func cmdServe(args []string) {
 		fmt.Fprintf(os.Stderr, "生成 token 失败: %v\n", err)
 		os.Exit(1)
 	} else {
-		fmt.Printf("[skill-hub] 接入 token: %s\n", tok)
+		fmt.Printf("[skill-manager] API token: %s\n", tok)
+	}
+	if pw, created, err := st.EnsureUsers(); err != nil {
+		fmt.Fprintf(os.Stderr, "初始化用户失败: %v\n", err)
+		os.Exit(1)
+	} else if created {
+		if pw == "" {
+			pw = os.Getenv("SKILLMANAGER_ADMIN_PASSWORD")
+		}
+		fmt.Printf("[skill-manager] 初始管理员账号: admin  密码: %s （仅此一次打印，请登录后尽快修改）\n", pw)
 	}
 
-	cfg := loadConfig()
+	cfg := applyLLMOverrides(loadConfig(), st)
 	lc := llm.New(cfg.LLM)
 	srv := server.New(st, lc)
 
@@ -152,7 +198,7 @@ func cmdServe(args []string) {
 		fmt.Fprintf(os.Stderr, "监听失败: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("[skill-hub] serving http://%s  db=%s  glm=%s(model=%s)\n",
+	fmt.Printf("[skill-manager] serving http://%s  db=%s  llm=%s(model=%s)\n",
 		ln.Addr(), *dbPath, map[bool]string{true: "已配置", false: "未配置"}[cfg.LLM.APIKey != ""], cfg.LLM.Model)
 
 	httpSrv := &http.Server{Handler: mux}
@@ -173,8 +219,8 @@ func cmdServe(args []string) {
 
 func cmdPush(args []string) {
 	fs := flag.NewFlagSet("push", flag.ExitOnError)
-	serverURL := fs.String("server", os.Getenv("SKILLHUB_SERVER"), "服务地址，如 http://1.2.3.4:8790")
-	token := fs.String("token", os.Getenv("SKILLHUB_TOKEN"), "接入 token（服务端设置页可见）")
+	serverURL := fs.String("server", os.Getenv("SKILLMANAGER_SERVER"), "服务地址，如 http://1.2.3.4:8790")
+	token := fs.String("token", os.Getenv("SKILLMANAGER_TOKEN"), "接入 token（服务端设置页可见）")
 	path := fs.String("path", "", "要扫描的 skill 根目录")
 	hostname := fs.String("hostname", "", "来源机器标记（默认取本机主机名）")
 	maxFileMB := fs.Int("max-file-mb", 10, "单文件上限(MB)，超限跳过（0=不限制）")
@@ -196,8 +242,8 @@ func cmdPush(args []string) {
 
 func cmdPull(args []string) {
 	fs := flag.NewFlagSet("pull", flag.ExitOnError)
-	serverURL := fs.String("server", os.Getenv("SKILLHUB_SERVER"), "服务地址，如 http://1.2.3.4:8790")
-	token := fs.String("token", os.Getenv("SKILLHUB_TOKEN"), "接入 token")
+	serverURL := fs.String("server", os.Getenv("SKILLMANAGER_SERVER"), "服务地址，如 http://1.2.3.4:8790")
+	token := fs.String("token", os.Getenv("SKILLMANAGER_TOKEN"), "接入 token")
 	dest := fs.String("dest", "", "拉取落盘目录（如 ~/.agents/skills）")
 	machine := fs.String("machine", "", "只拉某台机器的版本（空=全部，同名多机自动加 @machine 后缀）")
 	overwrite := fs.Bool("overwrite", false, "覆盖已存在的 skill 目录")
@@ -232,8 +278,8 @@ func cmdPull(args []string) {
 
 func cmdDaemon(args []string) {
 	fs := flag.NewFlagSet("daemon", flag.ExitOnError)
-	serverURL := fs.String("server", os.Getenv("SKILLHUB_SERVER"), "hub 地址")
-	token := fs.String("token", os.Getenv("SKILLHUB_TOKEN"), "接入 token")
+	serverURL := fs.String("server", os.Getenv("SKILLMANAGER_SERVER"), "hub 地址")
+	token := fs.String("token", os.Getenv("SKILLMANAGER_TOKEN"), "接入 token")
 	hostname := fs.String("hostname", "", "本机标识（默认取主机名）")
 	interval := fs.Int("interval", 30, "监控轮询间隔秒")
 	applyInterval := fs.Int("apply-interval", 300, "应用云端合并结果间隔秒")

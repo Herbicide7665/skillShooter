@@ -1,12 +1,13 @@
-# Skill Hub 通讯协议 v2
+# Skill Manager 通讯协议 v2.1
 
-2026-10-16 起生效。适用于 web 后台 ↔ exe 客户端（daemon/push/pull）与浏览器 UI 之间的全部 `/api/*` 通讯。
+2026-10-16 起生效。适用于 web 后台（账号登录）↔ exe 客户端（daemon/push/pull）与浏览器 UI 之间的全部 `/api/*` 通讯。
 
 ## 1. 总览
 
 - 传输层：HTTP（Hub 当前部署为明文 HTTP，无 TLS）。**token 绝不明文上 wire**——认证走 HMAC-SHA256 请求签名。
-- 认证两模式（服务端双模兼容）：
-  - **签名模式（新协议，推荐）**：请求携带 `X-Key-ID / X-Timestamp / X-Nonce / X-Body-SHA256 / X-Sign` 五个头，不含 token。
+- 认证三模式（v2.1 起浏览器与 API 分离）：
+  - **会话模式（浏览器 UI）**：`POST /api/login` 用户名口令登录 → HttpOnly `Session` cookie（30 天）。token 与浏览器彻底解耦。
+  - **签名模式（API 客户端，推荐）**：请求携带 `X-Key-ID / X-Timestamp / X-Nonce / X-Body-SHA256 / X-Sign` 五个头，不含 token。
   - **明文模式（旧客户端兼容宽限期）**：仅携带 `X-Token` 头。将被逐步淘汰；中间人可嗅探该头。
 - 内容编码：端点交互均为 JSON（`Content-Type: application/json`）；`/api/push` 为 multipart 表单（bundle 字段 = tar.gz）。
 
@@ -96,21 +97,25 @@ signString = METHOD + "\n" + pathWithQuery + "\n" + X-Timestamp + "\n" + X-Nonce
 
 | 端点 | 方法 | 认证 | 角色 |
 |---|---|---|---|
+| `/api/login`、`/api/logout` | POST | 免 | 任意（登录/登出） |
 | `/api/whoami` | GET | 免 | 任意（自检） |
 | `/api/push` | POST | 签名/明文 | user+ |
 | `/api/heartbeat` | POST | 签名/明文 | user+ |
-| `/api/skills*`、`/api/graph`、`/api/stats`、`/api/families`、`/api/machines`、`/api/canonical`、`/api/assignments` | GET | 签名/明文 | user+ |
+| `/api/password` | POST | 会话 | 登录用户本人改密 |
+| `/api/settings/llm`（POST 保存） | POST | 签名/明文/会话 | **admin**（key 热生效，落 DB meta） |
+| `/api/skills*`、`/api/graph`、`/api/stats`、`/api/families`、`/api/machines`、`/api/canonical`、`/api/assignments`、`/api/settings`（GET） | GET | 签名/明文/会话 | user+（主 token 字段仅 admin 可见） |
 | `/api/skills/<id>/system`、`/api/dup/*`（scan/merge/adopt/dismiss）、`/api/edges/scan`、`/api/assignments/<host>`（PUT） | POST/PUT | 签名/明文 | **admin** |
 | `/api/dispatches`（POST 下发）、`/api/dispatches/list` | POST/GET | 签名/明文 | **admin** |
 | `/api/dispatches`（GET 认领）、`/api/dispatches/<id>/result` | GET/POST | 签名/明文 | user+（客户端） |
-| `/api/jobs`（POST 下发/GET 列表）、`/api/tokens*`、`/api/settings/glm-test` | POST/GET | 签名/明文 | **admin** |
+| `/api/jobs`（POST 下发/GET 列表）、`/api/tokens*`、`/api/settings/llm*`、`/api/users*` | POST/GET | 签名/明文/会话 | **admin** |
 | `/api/jobs/next`（认领） | GET | 签名/明文 | **admin**（user 客户端返回空任务不领取） |
 | `/api/client/<bin>` | GET | 签名/明文 | user+（内嵌请求者自身 token） |
 | `/dl/<bin>` | GET | 免 | 分发引导用（不含敏感数据） |
 
 ## 8. 安全性质小结
 
-- **防嗅探**：签名模式下 token 不出现在任何请求中；`X-Key-ID` 仅泄露 sha256 前 64 bit，不可逆。
+- **防嗅探**：签名模式下 token 不出现在任何请求中；浏览器走会话 cookie，token 与浏览器解耦
+- **登录防爆破**：同用户名连续失败 5 次锁 60 秒（内存态）；`X-Key-ID` 仅泄露 sha256 前 64 bit，不可逆。
 - **防重放**：时间窗 + nonce 缓存（重启清空由时间窗兜底）。
 - **防篡改**：`X-Body-SHA256` 覆盖完整请求体（含 multipart bundle）。
 - **降级攻击**：服务端见 `X-Sign` 头即只走签名校验，失败不回落。

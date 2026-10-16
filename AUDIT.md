@@ -131,3 +131,34 @@
 ### 8.5 结论
 
 协议 v2 的签名层经负路径动态验证（重放/篡改/过期全拒）；新增端点 token 门全覆盖、admin 面收敛正确；git 历史无任何密钥/隐私数据。可推送 GitHub 私库。
+
+
+## 九、v2.1 认证与更名增量审计（2026-10-16）
+
+### 9.1 浏览器会话认证
+- users 表：PBKDF2-HMAC-SHA256（6 万轮，标准库手写，常数时间比对）；初始 admin 密码随机生成仅启动日志打印一次，或 `SKILLMANAGER_ADMIN_PASSWORD` env 指定
+- sessions 表：32 字节随机 token（RawURL base64），HttpOnly + SameSite=Lax cookie，30 天过期，惰性清理
+- 登录防爆破：同用户名 5 次失败锁 60 秒（内存态，重启清零）
+- 本人改密需旧密码；admin 重置他人密码；禁止删除最后一个管理员
+
+### 9.2 token 与浏览器解耦
+- 主 token 不再回给非 admin：`GET /api/settings` 的 token 字段按 principal 角色过滤（此前任何有效 token 均可见主 token——已修复的提权面）
+- `/api/client/<bin>` 三通道（签名/会话/X-Token）统一收敛到 principal 判定，user 会话禁止浏览器下载客户端（无法内嵌 token），保持防提权语义
+
+### 9.3 修复的既有 bug（本次测试发现）
+- **签名请求角色误判**：X-Sign 请求在 requireRole 二次解析时重放检测误触发（nonce 一次性）→ 引入 per-request context 缓存，签名每请求只验证一次
+- **旧 checkAdmin/checkToken 双轨**：收敛为 resolvePrincipal 单一判定（会话 > 签名 > 明文）
+
+### 9.4 更名（skill-hub → skill-manager）
+- module 改名 skill-manager；二进制/数据目录/数据库名/env 前缀（SKILLMANAGER_*）全量更名
+- 客户端内嵌配置 marker 换为 SKILLMANAGER-CLIENT-CONFIG（旧内嵌二进制失效，需重新下载）
+- 兼容：glm_* yaml 键、GLM_API_KEY/ZHIPUAI_API_KEY env、旧 X-Token 认证均继续工作
+
+### 9.5 LLM 配置自定义化
+- 去厂商绑定：llm_api_key/llm_base_url/llm_model（yaml）+ SKILLMANAGER_LLM_*（env）+ 设置页三源，优先级 env > 设置页 > yaml
+- 设置页保存热生效（llm.Client 加锁 SetConfig），key 脱敏展示（前4后4）
+- 仍为 OpenAI 兼容 + Anthropic messages 双协议自动选择
+
+### 9.6 遗留建议
+- 登录限速为内存态，重启清零（可接受：会话暴力破解面有限，PBKDF2 60k 轮本身减速）
+- 无 TLS 前提下会话 cookie 明文传输——部署在公网时仍建议反向代理加 TLS（与 token 嗅探限制同源）

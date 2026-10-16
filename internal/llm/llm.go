@@ -8,27 +8,26 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Config struct {
-	APIKey  string `yaml:"glm_api_key"`
-	BaseURL string `yaml:"glm_base_url"`
-	Model   string `yaml:"glm_model"`
+	APIKey  string `yaml:"llm_api_key"`
+	BaseURL string `yaml:"llm_base_url"`
+	Model   string `yaml:"llm_model"`
 }
 
-func (c Config) Enabled() bool { return c.APIKey != "" }
+func (c Config) Enabled() bool { return c.APIKey != "" && c.Model != "" }
 
 func (c *Config) defaults() {
 	if c.BaseURL == "" {
-		c.BaseURL = "https://open.bigmodel.cn/api/paas/v4"
-	}
-	if c.Model == "" {
-		c.Model = "glm-5.3-flash"
+		c.BaseURL = "https://api.openai.com/v1"
 	}
 }
 
 type Client struct {
+	mu  sync.Mutex
 	cfg Config
 	hc  *http.Client
 }
@@ -41,7 +40,19 @@ func New(cfg Config) *Client {
 	}
 }
 
-func (c *Client) Config() Config { return c.cfg }
+func (c *Client) Config() Config {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.cfg
+}
+
+// SetConfig 热更新 LLM 配置（设置页保存后立即生效，无需重启）
+func (c *Client) SetConfig(cfg Config) {
+	cfg.defaults()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cfg = cfg
+}
 
 type chatReq struct {
 	Model    string        `json:"model"`
@@ -70,7 +81,7 @@ type chatResp struct {
 // 均带一次重试。
 func (c *Client) Chat(ctx context.Context, system, user string) (string, error) {
 	if !c.cfg.Enabled() {
-		return "", fmt.Errorf("GLM 未配置")
+		return "", fmt.Errorf("LLM 未配置")
 	}
 	if strings.Contains(c.cfg.BaseURL, "/anthropic") {
 		return c.chatAnthropic(ctx, system, user)
@@ -104,7 +115,7 @@ func (c *Client) chatAnthropic(ctx context.Context, system, user string) (string
 		MaxTokens: 4096,
 		System:    system,
 		Messages:  []chatMessage{{Role: "user", Content: user}},
-		// GLM-5.3 思考块吃预算且拖慢响应，关闭直出（与 ST GLM-NO-THINK-PATCH 同理）
+		// 思考型模型（GLM-5.3 等）思考块吃预算且拖慢响应，关闭直出
 		Thinking: &struct {
 			Type string `json:"type"`
 		}{Type: "disabled"},

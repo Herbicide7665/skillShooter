@@ -1,8 +1,7 @@
-/* Skill Hub SPA */
+/* Skill Manager SPA */
 const $app = document.getElementById('app');
 const $nav = document.querySelectorAll('#navlinks a');
 
-const state = { machines: [], glm: null };
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -14,88 +13,13 @@ function toast(msg, isErr) {
   clearTimeout(t._timer);
   t._timer = setTimeout(() => t.classList.add('hidden'), 4000);
 }
-function getToken() { return localStorage.getItem('skhub_token') || ''; }
+/* ---- 会话认证：浏览器用登录 cookie，token 只留给 API 客户端 ---- */
+const state = { machines: [], llm: null, me: null };
 
-/* ---- 纯 JS SHA-256/HMAC：hub 是 http 非 secure context，crypto.subtle 不可用 ---- */
-const _K = new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
-function rotr(x, n) { return (x >>> n) | (x << (32 - n)); }
-function sha256Bytes(bytes) {
-  const H = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
-  const l = bytes.length, total = Math.ceil((l + 9) / 64) * 64;
-  const buf = new Uint8Array(total);
-  buf.set(bytes); buf[l] = 0x80;
-  const dv = new DataView(buf.buffer);
-  dv.setUint32(total - 8, Math.floor(l * 8 / 4294967296));
-  dv.setUint32(total - 4, (l * 8) >>> 0);
-  const w = new Uint32Array(64);
-  for (let i = 0; i < total; i += 64) {
-    for (let j = 0; j < 16; j++) w[j] = dv.getUint32(i + j * 4);
-    for (let j = 16; j < 64; j++) {
-      const s0 = rotr(w[j-15],7) ^ rotr(w[j-15],18) ^ (w[j-15] >>> 3);
-      const s1 = rotr(w[j-2],17) ^ rotr(w[j-2],19) ^ (w[j-2] >>> 10);
-      w[j] = (w[j-16] + s0 + w[j-7] + s1) >>> 0;
-    }
-    let a=H[0],b=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],h=H[7];
-    for (let j = 0; j < 64; j++) {
-      const S1 = rotr(e,6) ^ rotr(e,11) ^ rotr(e,25);
-      const ch = (e & f) ^ (~e & g);
-      const t1 = (h + S1 + ch + _K[j] + w[j]) >>> 0;
-      const S0 = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22);
-      const maj = (a & b) ^ (a & c) ^ (b & c);
-      const t2 = (S0 + maj) >>> 0;
-      h=g; g=f; f=e; e=(d+t1)>>>0; d=c; c=b; b=a; a=(t1+t2)>>>0;
-    }
-    H[0]=(H[0]+a)>>>0; H[1]=(H[1]+b)>>>0; H[2]=(H[2]+c)>>>0; H[3]=(H[3]+d)>>>0;
-    H[4]=(H[4]+e)>>>0; H[5]=(H[5]+f)>>>0; H[6]=(H[6]+g)>>>0; H[7]=(H[7]+h)>>>0;
-  }
-  const out = new Uint8Array(32), odv = new DataView(out.buffer);
-  for (let i = 0; i < 8; i++) odv.setUint32(i * 4, H[i]);
-  return out;
-}
-function concatBytes(a, b) { const o = new Uint8Array(a.length + b.length); o.set(a); o.set(b, a.length); return o; }
-function hmacSha256(keyBytes, msgBytes) {
-  let k = keyBytes;
-  if (k.length > 64) k = sha256Bytes(k);
-  const kp = new Uint8Array(64); kp.set(k);
-  const oKey = new Uint8Array(64), iKey = new Uint8Array(64);
-  for (let i = 0; i < 64; i++) { oKey[i] = kp[i] ^ 0x5c; iKey[i] = kp[i] ^ 0x36; }
-  return sha256Bytes(concatBytes(oKey, sha256Bytes(concatBytes(iKey, msgBytes))));
-}
-function bytesToHex(b) { return Array.from(b).map(x => x.toString(16).padStart(2, '0')).join(''); }
-const utf8Bytes = s => new TextEncoder().encode(s);
-
-/* ---- HMAC 请求签名（token 不上 wire，见 PROTOCOL.md）---- */
-function signHeaders(method, pathWithQuery, bodyStr) {
-  const token = getToken();
-  if (!token) return {};
-  const ts = Math.floor(Date.now() / 1000).toString();
-  const nonce = bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
-  const bodySHA = bytesToHex(sha256Bytes(utf8Bytes(bodyStr || '')));
-  const signStr = [method, pathWithQuery, ts, nonce, bodySHA].join('\n');
-  const sign = bytesToHex(hmacSha256(utf8Bytes(token), utf8Bytes(signStr)));
-  return {
-    'X-Key-ID': bytesToHex(sha256Bytes(utf8Bytes(token))).slice(0, 16),
-    'X-Timestamp': ts, 'X-Nonce': nonce, 'X-Body-SHA256': bodySHA, 'X-Sign': sign,
-  };
-}
-
-async function askToken() {
-  const t = prompt('访问 Skill Hub 需要接入 Token（见服务端启动日志 serve.log 或 skillhub.db 所在机器）');
-  if (t && t.trim()) {
-    localStorage.setItem('skhub_token', t.trim());
-    return t.trim();
-  }
-  return '';
-}
-function authHeaders(extra) {
-  const h = Object.assign({}, extra || {});
-  if (getToken()) h['X-Token'] = getToken();
-  return h;
-}
 async function api(path, opts) {
   opts = opts || {};
-  const method = (opts.method || 'GET').toUpperCase();
-  opts.headers = Object.assign({}, opts.headers || {}, signHeaders(method, '/api' + path, opts.body || ''));
+  opts.method = (opts.method || 'GET').toUpperCase();
+  if (opts.body && !opts.headers) opts.headers = {'Content-Type': 'application/json'};
   // 502/网络抖动自动重试（指数退避）：上游代理/网络瞬断时不至于整页卡死
   let r;
   for (let attempt = 0; ; attempt++) {
@@ -111,38 +35,98 @@ async function api(path, opts) {
     }
     break;
   }
-  if (r.status === 401 && !opts._retried) {
-    const t = await askToken();
-    if (t) return api(path, Object.assign({}, opts, {_retried: true}));
+  if (r.status === 401 && !opts._retried && path !== '/login') {
+    renderLogin();
+    throw new Error('未登录或会话已过期');
   }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
   return data;
 }
 async function apiPost(path, body) {
-  return api(path, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  return api(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
 }
 async function apiPut(path, body) {
-  return api(path, {
-    method: 'PUT',
-    headers: {'Content-Type': 'application/json'},
-    body: body ? JSON.stringify(body) : undefined,
+  return api(path, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
+}
+// 原始文件请求（正文/下载），同名保留
+async function authFetch(url) { return fetch(url); }
+
+/* ---- 登录页 ---- */
+function renderLogin() {
+  $nav.forEach(a => a.style.display = 'none');
+  document.getElementById('userbox').innerHTML = '';
+  $app.innerHTML = `
+    <div class="login-wrap">
+      <div class="panel login-panel">
+        <h2 style="margin-top:0">Skill Manager 登录</h2>
+        <div class="toolbar" style="flex-direction:column;align-items:stretch;gap:8px">
+          <input type="text" id="lguser" placeholder="用户名" autocomplete="username">
+          <input type="password" id="lgpass" placeholder="密码" autocomplete="current-password">
+        </div>
+        <div class="toolbar" style="margin-top:10px">
+          <button class="primary" id="lgbtn" style="width:100%">登 录</button>
+        </div>
+        <p class="small muted" id="lgmsg"></p>
+      </div>
+    </div>`;
+  const doLogin = async () => {
+    const u = document.getElementById('lguser').value.trim();
+    const p = document.getElementById('lgpass').value;
+    if (!u || !p) { document.getElementById('lgmsg').textContent = '请输入用户名和密码'; return; }
+    try {
+      const r = await fetch('/api/login', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username: u, password: p})});
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      state.me = {user: d.user, role: d.role};
+      $nav.forEach(a => a.style.display = '');
+      applyRoleNav();
+      location.hash = '#/dashboard';
+      route();
+    } catch (e) { document.getElementById('lgmsg').textContent = e.message; }
+  };
+  document.getElementById('lgbtn').onclick = doLogin;
+  for (const id of ['lguser', 'lgpass']) document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  document.getElementById('lguser').focus();
+}
+
+async function doLogout() {
+  try { await fetch('/api/logout', {method: 'POST'}); } catch (e) {}
+  state.me = null;
+  renderLogin();
+}
+
+// 按角色显示/隐藏管理入口（非 admin 隐藏 远程调用）
+function applyRoleNav() {
+  const admin = state.me && state.me.role === 'admin';
+  document.querySelectorAll('#navlinks a').forEach(a => {
+    if (a.dataset.r === 'jobs') a.style.display = admin ? '' : 'none';
   });
-}
-// 带 token 的原始文件请求（正文/下载）
-async function authFetch(url) {
-  const path = url.startsWith('/api') ? url : '/api' + url;
-  let r = await fetch(url, {headers: signHeaders('GET', path, '')});
-  if (r.status === 401) {
-    const t = await askToken();
-    if (t) r = await fetch(url, {headers: signHeaders('GET', path, '')});
+  const ub = document.getElementById('userbox');
+  if (state.me) {
+    ub.innerHTML = `<span class="small muted">${esc(state.me.user)} · ${state.me.role === 'admin' ? '管理员' : '用户'}</span>
+      <button style="margin-left:8px;padding:2px 10px" onclick="doLogout()">退出</button>`;
+  } else {
+    ub.innerHTML = '';
   }
-  return r;
 }
+
+async function boot() {
+  try {
+    const r = await fetch('/api/whoami');
+    const d = await r.json();
+    if (d.ok) {
+      state.me = {user: d.user || d.role, role: d.role};
+      $nav.forEach(a => a.style.display = '');
+      applyRoleNav();
+      route();
+      return;
+    }
+  } catch (e) {}
+  renderLogin();
+}
+
 function fmtBytes(n) {
   if (!n && n !== 0) return '-';
   if (n < 1024) return n + ' B';
@@ -208,7 +192,7 @@ async function pageDashboard() {
       <td><span class="badge b-machine">${esc(r.machine)}</span></td>
       <td><span class="badge b-${r.kind === 'merged' ? 'merged' : 'push'}">${r.kind === 'merged' ? '合并' : '推送'}</span></td>
       <td class="mono small">v${r.version_id}</td>
-    </tr>`).join('') || '<tr><td colspan="5" class="muted">暂无记录，先用 skill-hub push 推送数据</td></tr>'}
+    </tr>`).join('') || '<tr><td colspan="5" class="muted">暂无记录，先用 skill-manager push 推送数据</td></tr>'}
     </tbody></table>`;
   document.getElementById('devbox').innerHTML = `
     <table class="tbl"><thead><tr><th>设备</th><th>状态</th><th>最后活跃</th><th>skill 数</th><th>推送次数</th></tr></thead><tbody>
@@ -319,7 +303,7 @@ async function pageSkillDetail(rest) {
       <div id="diffbox"></div>
     </div>
 
-    <h2>文件浏览（最新版本）</h2>
+    <h2>文件浏览（可选历史版本）</h2>
     <div class="panel" id="filebox"><div class="loading">加载中…</div></div>
 
     <h2>关联关系</h2>
@@ -358,23 +342,46 @@ async function pageSkillDetail(rest) {
     box.innerHTML = renderDiff(r.diff);
   };
 
-  // 文件浏览
+  // 文件浏览（版本可选：全部历史版本留档，可回看/下载任意版本）
   const fb = document.getElementById('filebox');
   if (s.latest_version_id) {
-    const tree = await api(`/skills/${id}/tree?version=${s.latest_version_id}`);
-    const paths = Object.keys(tree);
+    let curTree = {};
     fb.innerHTML = `
-      <div class="toolbar"><select id="fpick">${paths.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('')}</select>
-      <span class="muted small" id="fmeta"></span></div>
-      <pre class="code" id="fview">选择左侧文件查看内容</pre>`;
-    const loadFile = async () => {
-      const p = document.getElementById('fpick').value;
-      const r = await authFetch(`/api/skills/${id}/file?version=${s.latest_version_id}&path=${encodeURIComponent(p)}`);
-      document.getElementById('fview').textContent = await r.text();
-      document.getElementById('fmeta').textContent = 'blob ' + tree[p].slice(0, 12);
+      <div class="toolbar">
+        <select id="vsel">${d.versions.map(v => `<option value="${v.id}"${v.id === s.latest_version_id ? ' selected' : ''}>v${v.id} · ${fmtTime(v.created_at)} · ${v.kind === 'merged' ? '合并' : '推送'}</option>`).join('')}</select>
+        <select id="fpick"></select>
+        <span class="muted small" id="fmeta"></span>
+        <button onclick="window._dlVersion()">下载此版本 tar.gz</button>
+      </div>
+      <pre class="code" id="fview">选择文件查看内容</pre>`;
+    const loadTree = async () => {
+      const vid = document.getElementById('vsel').value;
+      curTree = await api(`/skills/${id}/tree?version=${vid}`);
+      document.getElementById('fpick').innerHTML = Object.keys(curTree).map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+      await loadFile();
     };
+    const loadFile = async () => {
+      const vid = document.getElementById('vsel').value;
+      const p = document.getElementById('fpick').value;
+      if (!p) return;
+      const r = await authFetch(`/api/skills/${id}/file?version=${vid}&path=${encodeURIComponent(p)}`);
+      document.getElementById('fview').textContent = await r.text();
+      document.getElementById('fmeta').textContent = 'blob ' + (curTree[p] || '').slice(0, 12);
+    };
+    document.getElementById('vsel').addEventListener('change', loadTree);
     document.getElementById('fpick').addEventListener('change', loadFile);
-    await loadFile();
+    window._dlVersion = async () => {
+      const vid = document.getElementById('vsel').value;
+      const r = await authFetch(`/api/skills/${id}/download?version=${vid}`);
+      if (!r.ok) { toast('下载失败: HTTP ' + r.status, true); return; }
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${s.name}-v${vid}.tar.gz`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
+    await loadTree();
   } else {
     fb.innerHTML = '<span class="muted">无版本数据</span>';
   }
@@ -548,7 +555,7 @@ async function pageDevices() {
       <p class="small muted" style="margin:6px 0">
         设备每 30 分钟心跳一次（daemon 客户端），超 35 分钟无心跳/推送判离线。
         为设备分配 skill 后，可点「下发部署」让设备在下次心跳（或客户端手动同步）时自动把分配的 skill 拉取落盘到本地 skill 目录。
-        客户端托盘菜单也可主动「立即同步 / 上传本机全部 / 下载云端分配」。命令行：<code class="inline">skill-hub pull --assigned --dest ~/.agents/skills</code>。
+        客户端托盘菜单也可主动「立即同步 / 上传本机全部 / 下载云端分配」。命令行：<code class="inline">skill-manager pull --assigned --dest ~/.agents/skills</code>。
       </p>
     </div>
     <div id="devlist"><div class="loading">加载中…</div></div>
@@ -739,158 +746,223 @@ function simpleDiff(a, b, name) {
 async function pageSettings() {
   $app.innerHTML = '<div class="loading">加载中…</div>';
   const s = await api('/settings');
+  const admin = state.me && state.me.role === 'admin';
   $app.innerHTML = `
-    <h1>设置</h1>
+    ${admin ? `
     <div class="panel" style="border-left:4px solid var(--accent)">
       <h2 style="margin-top:0">一键接入（免命令行，推荐）</h2>
       <div class="toolbar">
-        <button class="primary" onclick="window._dlClient('skill-hub.exe')">⬇ Windows 客户端（双击即用）</button>
-        <button onclick="window._dlClient('skill-hub')">⬇ Linux 客户端</button>
-        <button onclick="window._dlClient('skill-hub-darwin-arm64')">⬇ macOS (Apple)</button>
-        <button onclick="window._dlClient('skill-hub-darwin-amd64')">⬇ macOS (Intel)</button>
+        <button class="primary" onclick="window._dlClient('skill-manager.exe')">⬇ Windows 客户端（双击即用）</button>
+        <button onclick="window._dlClient('skill-manager')">⬇ Linux 客户端</button>
+        <button onclick="window._dlClient('skill-manager-darwin-arm64')">⬇ macOS (Apple)</button>
+        <button onclick="window._dlClient('skill-manager-darwin-amd64')">⬇ macOS (Intel)</button>
       </div>
-      <p class="small muted">下载的二进制<b>已内嵌本 Hub 地址与接入配置</b>：放到任意目录，Windows 直接双击 — 托盘出现蓝色图标（右键：打开 Hub / 立即同步 / 退出），自动全盘推送本机 skill、增量同步、应用云端合并、接收远程调用。Linux/macOS：<code class="inline">chmod +x skill-hub && ./skill-hub</code>。<b>开机自启</b>：Win+R 输入 <code class="inline">shell:startup</code>，给 exe 创建快捷方式放进去。配置同时落在 <code class="inline">~/.skill-hub/config.json</code> 可查看。</p>
-    </div>
+      <p class="small muted">下载的二进制<b>已内嵌本 Hub 地址与接入配置</b>：放到任意目录，Windows 直接双击 — 托盘出现蓝色图标（右键：打开 Hub / 立即同步 / 退出），自动全盘推送本机 skill、增量同步、应用云端合并、接收远程调用。Linux/macOS：<code class="inline">chmod +x skill-manager && ./skill-manager</code>。<b>开机自启</b>：Win+R 输入 <code class="inline">shell:startup</code>，给 exe 创建快捷方式放进去。配置同时落在 <code class="inline">~/.skill-manager/config.json</code> 可查看。</p>
+    </div>` : ''}
+    ${admin ? `
     <div class="panel">
-      <h2 style="margin-top:0">接入 Token（管理员主凭据）</h2>
-      <p class="small muted">管理员 token：可执行一切操作（远程调用下发、去重合并、GLM 重构、创建用户 token）。</p>
+      <h2 style="margin-top:0">API Token（程序化调用凭据）</h2>
+      <p class="small muted">浏览器已用<b>账号登录</b>，无需 token。token 仅供 API 客户端（push/pull/daemon）使用：管理员 token 可执行一切操作，用户 token 仅同步数据（push/pull/读取），不能下发远程调用、也不会领取执行任务。新 token 只显示一次。</p>
       <div class="toolbar">
-        <input type="text" readonly value="${esc(s.token)}" style="min-width:420px;font-family:var(--mono)" id="tokinput">
-        <button onclick="navigator.clipboard.writeText(document.getElementById('tokinput').value).then(()=>toast('已复制'))">复制</button>
+        <input type="text" readonly value="${esc(s.token || '')}" style="min-width:420px;font-family:var(--mono)" id="tokinput">
+        <button onclick="navigator.clipboard.writeText(document.getElementById('tokinput').value).then(()=>toast('已复制'))">复制主 token</button>
       </div>
       <h2>用户 Token 管理</h2>
-      <p class="small muted">用户 token：仅能同步 skill 数据（push/pull/读取），<b>不能下发远程调用任务</b>；其客户端也不会领取执行任务。新 token 只显示一次。</p>
       <div class="toolbar">
         <input type="text" id="newtoknote" placeholder="备注（如：VM1）" style="min-width:160px">
         <button class="primary" id="mkuser">创建用户 token</button>
         <span id="newtokout" class="mono small"></span>
       </div>
       <table class="tbl" id="toktbl"><thead><tr><th>Token</th><th>角色</th><th>备注</th><th>创建时间</th><th></th></tr></thead><tbody></tbody></table>
+    </div>` : ''}
+    <div class="panel">
+      <h2 style="margin-top:0">LLM 接入（自定义模型）</h2>
+      <p class="small muted">任何 OpenAI 兼容端点均可（GLM/DeepSeek/OpenAI/OpenRouter/本地 vLLM 等）；base_url 含 <code class="inline">/anthropic</code> 时自动走 Anthropic messages 协议。key 留空表示不修改。优先级：环境变量 &gt; 此处保存 &gt; config.yaml。未配置时去重判定/合并建议/关系分析降级不可用。</p>
+      <div class="kv">
+        <div class="k">状态</div><div>${s.llm.enabled ? '<span class="badge b-push">已配置</span>' : '<span class="badge b-exact">未配置</span>'}</div>
+      </div>
+      ${admin ? `
+      <div class="toolbar" style="flex-wrap:wrap;gap:8px;margin-top:10px">
+        <input type="text" id="llmkey" placeholder="API Key（${esc(s.llm.key_masked || '未设置')}，留空不改）" style="min-width:300px;font-family:var(--mono)">
+        <input type="text" id="llmbase" placeholder="Base URL，如 https://api.openai.com/v1" value="${esc(s.llm.base_url || '')}" style="min-width:300px;font-family:var(--mono)">
+        <input type="text" id="llmmodel" placeholder="模型名，如 glm-4.7 / gpt-4o-mini" value="${esc(s.llm.model || '')}" style="min-width:220px;font-family:var(--mono)">
+        <button class="primary" id="llmsave">保存</button>
+        <button id="llmtestbtn" ${s.llm.enabled ? '' : 'disabled'}>测试连通性</button>
+        <span id="llmres" class="small"></span>
+      </div>` : `
+      <div class="kv"><div class="k">Base URL</div><div class="mono">${esc(s.llm.base_url)}</div><div class="k">模型</div><div class="mono">${esc(s.llm.model)}</div></div>`}
     </div>
     <div class="panel">
-      <h2 style="margin-top:0">GLM 接入</h2>
-      <div class="kv">
-        <div class="k">状态</div><div>${s.glm.enabled ? '<span class="badge b-push">已配置</span>' : '<span class="badge b-exact">未配置</span> <span class="muted small">去重判定/合并建议/关系分析将降级不可用</span>'}</div>
-        <div class="k">Base URL</div><div class="mono">${esc(s.glm.base_url)}</div>
-        <div class="k">模型</div><div class="mono">${esc(s.glm.model)}</div>
+      <h2 style="margin-top:0">修改我的密码</h2>
+      <div class="toolbar" style="flex-wrap:wrap;gap:8px">
+        <input type="password" id="pwold" placeholder="旧密码" style="min-width:180px">
+        <input type="password" id="pwnew" placeholder="新密码（至少 6 位）" style="min-width:180px">
+        <button class="primary" id="pwbtn">修改密码</button>
+        <span id="pwmsg" class="small"></span>
       </div>
-      <div class="toolbar" style="margin-top:12px">
-        <button class="primary" id="glmtest" ${s.glm.enabled ? '' : 'disabled'}>测试连通性</button>
-        <span id="glmres" class="small"></span>
-      </div>
-      <p class="small muted">key 从 <code class="inline">config.yaml</code>（与二进制同目录）或环境变量 <code class="inline">GLM_API_KEY</code>/<code class="inline">ZHIPUAI_API_KEY</code> 读取，env 优先。</p>
     </div>
+    ${admin ? `
+    <div class="panel">
+      <h2 style="margin-top:0">用户账号管理</h2>
+      <p class="small muted">web 后台登录账号（与 API token 相互独立）。admin 角色可管理一切，user 角色只读 + 同步视角。</p>
+      <div class="toolbar" style="flex-wrap:wrap;gap:8px">
+        <input type="text" id="unew" placeholder="用户名" style="min-width:140px">
+        <input type="password" id="upass" placeholder="密码（≥6 位）" style="min-width:140px">
+        <select id="urole"><option value="user">user</option><option value="admin">admin</option></select>
+        <button class="primary" id="ucreate">创建用户</button>
+      </div>
+      <table class="tbl" id="usertbl"><thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>创建时间</th><th></th></tr></thead><tbody></tbody></table>
+    </div>` : ''}
+    ${admin ? `
     <div class="panel">
       <h2 style="margin-top:0">新机器接入（复制即用）</h2>
       <div class="toolbar">
         <span class="small muted">机器名（留空=自动取主机名）</span>
         <input type="text" id="bsHost" placeholder="如 my-laptop" style="min-width:200px">
       </div>
-      <p class="small muted">在目标机器终端粘贴执行即可：自动下载二进制到 <code class="inline">~/.skill-hub/</code>，<b>全盘收集</b>本机所有 agent 工具的 skill（.agents / .claude / .zcode 插件缓存等，存在的才推）并上传。重复执行安全（幂等）。</p>
+      <p class="small muted">在目标机器终端粘贴执行即可：自动下载二进制到 <code class="inline">~/.skill-manager/</code>，<b>全盘收集</b>本机所有 agent 工具的 skill（.agents / .claude / .zcode 插件缓存等，存在的才推）并上传。重复执行安全（幂等）。</p>
       <b class="small">Linux / macOS / Windows Git Bash（一条命令）</b>
-      <div class="toolbar">
-        <input type="text" readonly id="cmdUnix" class="mono" style="min-width:620px">
-        <button onclick="window._copyCmd('cmdUnix')">复制</button>
-      </div>
+      <div class="toolbar"><input type="text" readonly id="cmdUnix" class="mono" style="min-width:620px"><button onclick="window._copyCmd('cmdUnix')">复制</button></div>
       <b class="small">Windows（PowerShell）</b>
-      <div class="toolbar">
-        <input type="text" readonly id="cmdWin" class="mono" style="min-width:620px">
-        <button onclick="window._copyCmd('cmdWin')">复制</button>
-      </div>
+      <div class="toolbar"><input type="text" readonly id="cmdWin" class="mono" style="min-width:620px"><button onclick="window._copyCmd('cmdWin')">复制</button></div>
       <b class="small">反向分发（任意已接入机器，把 hub 合并成果拉回本地）</b>
-      <div class="toolbar">
-        <input type="text" readonly id="cmdPull" class="mono" style="min-width:620px">
-        <button onclick="window._copyCmd('cmdPull')">复制</button>
-      </div>
+      <div class="toolbar"><input type="text" readonly id="cmdPull" class="mono" style="min-width:620px"><button onclick="window._copyCmd('cmdPull')">复制</button></div>
       <b class="small">本机常驻客户端（增量监控推送 + 自动应用云端合并 + 接收远程调用）</b>
-      <div class="toolbar">
-        <input type="text" readonly id="cmdDaemon" class="mono" style="min-width:620px">
-        <button onclick="window._copyCmd('cmdDaemon')">复制</button>
-      </div>
-      <p class="small muted">在目标机器终端执行即可常驻（加 nohup 或做成开机任务更佳）；执行后该机器的 skill 变更 30 秒内自动上云、hub 合并结果自动落回本地、可从本页远程调用其 skill。</p>
-    </div>`;
-  // 已配置客户端下载：服务端把 server/token 追加进二进制尾部
-  // 用户 token 管理
-  const loadTokens = async () => {
+      <div class="toolbar"><input type="text" readonly id="cmdDaemon" class="mono" style="min-width:620px"><button onclick="window._copyCmd('cmdDaemon')">复制</button></div>
+    </div>` : ''}`;
+
+  if (admin) {
+    const loadTokens = async () => {
+      try {
+        const ts = await api('/tokens');
+        const tb = document.querySelector('#toktbl tbody');
+        if (!tb) return;
+        tb.innerHTML = ts.map(t => `<tr>
+          <td class="mono small">${esc(t.token_masked)}</td>
+          <td><span class="badge ${t.role === 'admin' ? 'b-merged' : 'b-machine'}">${esc(t.role)}</span></td>
+          <td>${esc(t.note || '')}</td>
+          <td class="muted small">${esc(fmtTime(t.created_at))}</td>
+          <td><button onclick="window._revokeTok('${esc(t.token_masked)}')">吊销</button></td>
+        </tr>`).join('') || '<tr><td colspan="5" class="muted small">暂无角色 token（现有各客户端用主 token）</td></tr>';
+      } catch (e) {}
+    };
+    loadTokens();
+    const mkBtn = document.getElementById('mkuser');
+    if (mkBtn) mkBtn.onclick = async () => {
+      const note = document.getElementById('newtoknote').value.trim();
+      try {
+        const r = await apiPost('/tokens/create', { role: 'user', note });
+        document.getElementById('newtokout').innerHTML = '<span style="color:var(--ok)">新 token（仅此一次显示）：</span><input readonly value="' + esc(r.token) + '" style="width:340px;font-family:var(--mono)">';
+        loadTokens();
+      } catch (e) { toast(e.message, true); }
+    };
+    window._revokeTok = async masked => {
+      if (!confirm('吊销该 token？对应客户端将立即失去访问。')) return;
+      try { await apiPost('/tokens/revoke', { token: masked }); loadTokens(); toast('已吊销'); }
+      catch (e) { toast(e.message, true); }
+    };
+
+    const loadUsers = async () => {
+      try {
+        const us = await api('/users');
+        const tb = document.querySelector('#usertbl tbody');
+        if (!tb) return;
+        tb.innerHTML = us.map(u => '<tr><td>' + u.id + '</td><td><b>' + esc(u.username) + '</b></td>' +
+          '<td><span class="badge ' + (u.role === 'admin' ? 'b-merged' : 'b-machine') + '">' + esc(u.role) + '</span></td>' +
+          '<td class="muted small">' + esc(fmtTime(u.created_at)) + '</td>' +
+          '<td><button onclick="window._delUser(' + u.id + ', \'' + esc(u.username) + '\')">删除</button>' +
+          '<button onclick="window._resetPw(' + u.id + ', \'' + esc(u.username) + '\')">重置密码</button></td></tr>').join('');
+      } catch (e) {}
+    };
+    loadUsers();
+    document.getElementById('ucreate').onclick = async () => {
+      const username = document.getElementById('unew').value.trim();
+      const password = document.getElementById('upass').value;
+      const role = document.getElementById('urole').value;
+      try { await apiPost('/users/create', {username, password, role}); toast('用户已创建'); loadUsers(); }
+      catch (e) { toast(e.message, true); }
+    };
+    window._delUser = async (id, name) => {
+      if (!confirm('删除用户 ' + name + '？')) return;
+      try { await apiPost('/users/delete', {id}); toast('已删除'); loadUsers(); }
+      catch (e) { toast(e.message, true); }
+    };
+    window._resetPw = async (id, name) => {
+      const pw = prompt('为 ' + name + ' 设置新密码（≥6 位）');
+      if (!pw) return;
+      try { await apiPost('/users/password', {id, password: pw}); toast('密码已重置'); }
+      catch (e) { toast(e.message, true); }
+    };
+
+    const buildCmds = () => {
+      const hub = location.origin;
+      const hn = (document.getElementById('bsHost').value || '').trim();
+      const hnU = hn ? ' --hostname ' + hn : '';
+      document.getElementById('cmdUnix').value =
+        'curl -fsSL ' + hub + '/agent.sh | sh -s -- --server ' + hub + ' --token ' + s.token + hnU;
+      const hnW = hn ? " -Hostname '" + hn + "'" : '';
+      document.getElementById('cmdWin').value =
+        "powershell -NoProfile -ExecutionPolicy Bypass -Command \"iwr '" + hub + "/agent.ps1' -OutFile $env:TEMP\\sh-agent.ps1; & $env:TEMP\\sh-agent.ps1 -Server '" + hub + "' -Token '" + s.token + "'" + hnW + '"';
+      document.getElementById('cmdPull').value =
+        '~/.skill-manager/skill-manager pull --server ' + hub + ' --token ' + s.token + ' --dest ~/.agents/skills';
+      document.getElementById('cmdDaemon').value =
+        'nohup ~/.skill-manager/skill-manager daemon --server ' + hub + ' --token ' + s.token + hnU + ' > ~/.skill-manager/daemon.log 2>&1 &';
+    };
+    buildCmds();
+    document.getElementById('bsHost').addEventListener('input', buildCmds);
+    window._copyCmd = id => {
+      const el = document.getElementById(id);
+      el.select();
+      navigator.clipboard.writeText(el.value).then(() => toast('已复制，去目标机器终端粘贴执行')).catch(() => {
+        document.execCommand('copy'); toast('已复制');
+      });
+    };
+    window._dlClient = async name => {
+      try {
+        toast('正在生成已配置客户端…');
+        const r = await fetch('/api/client/' + name);
+        if (r.status === 403) throw new Error('当前身份不能下载客户端（需管理员）');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const blob = await r.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        toast('已下载（含配置）。Windows 双击即用；macOS/Linux 先 chmod +x');
+      } catch (e) { toast(e.message, true); }
+    };
+    document.getElementById('llmsave').onclick = async () => {
+      try {
+        const r = await apiPost('/settings/llm', {
+          api_key: document.getElementById('llmkey').value.trim(),
+          base_url: document.getElementById('llmbase').value.trim(),
+          model: document.getElementById('llmmodel').value.trim(),
+        });
+        toast(r.enabled ? '已保存并生效（LLM 已配置）' : '已保存（key/model 不完整，LLM 未启用）');
+        pageSettings();
+      } catch (e) { toast(e.message, true); }
+    };
+    document.getElementById('llmtestbtn').onclick = async () => {
+      document.getElementById('llmres').textContent = '测试中…';
+      try {
+        const r = await apiPost('/settings/llm-test');
+        document.getElementById('llmres').innerHTML = '<span style="color:var(--ok)">✓ 连通正常，模型回复: ' + esc(r.reply) + '</span>';
+      } catch (e) {
+        document.getElementById('llmres').innerHTML = '<span style="color:var(--danger)">✗ ' + esc(e.message) + '</span>';
+      }
+    };
+  }
+  document.getElementById('pwbtn').onclick = async () => {
+    const old_ = document.getElementById('pwold').value, nw = document.getElementById('pwnew').value;
+    if (!nw || nw.length < 6) { document.getElementById('pwmsg').textContent = '新密码至少 6 位'; return; }
     try {
-      const ts = await api('/tokens');
-      const tb = document.querySelector('#toktbl tbody');
-      if (!tb) return;
-      tb.innerHTML = ts.map(t => `<tr>
-        <td class="mono small">${esc(t.token_masked)}</td>
-        <td><span class="badge ${t.role === 'admin' ? 'b-merged' : 'b-machine'}">${esc(t.role)}</span></td>
-        <td>${esc(t.note || '')}</td>
-        <td class="muted small">${esc(fmtTime(t.created_at))}</td>
-        <td><button onclick="window._revokeTok('${esc(t.token_masked)}')">吊销</button></td>
-      </tr>`).join('') || '<tr><td colspan="5" class="muted small">暂无角色 token（现有各客户端用主 token）</td></tr>';
-    } catch (e) { /* 非 admin 忽略 */ }
-  };
-  loadTokens();
-  const mkBtn = document.getElementById('mkuser');
-  if (mkBtn) mkBtn.onclick = async () => {
-    const note = document.getElementById('newtoknote').value.trim();
-    try {
-      const r = await apiPost('/tokens/create', { role: 'user', note });
-      document.getElementById('newtokout').innerHTML = `<span style="color:var(--ok)">新 token（仅此一次显示）：</span><input readonly value="${esc(r.token)}" style="width:340px;font-family:var(--mono)">`;
-      loadTokens();
-    } catch (e) { toast(e.message, true); }
-  };
-  window._revokeTok = async masked => {
-    if (!confirm('吊销该 token？对应客户端将立即失去访问。')) return;
-    try { await apiPost('/tokens/revoke', { token: masked }); loadTokens(); toast('已吊销'); }
-    catch (e) { toast(e.message, true); }
-  };
-  window._dlClient = async name => {
-    try {
-      toast('正在生成已配置客户端…');
-      const r = await fetch('/api/client/' + name, {headers: signHeaders('GET', '/api/client/' + name, '')});
-      if (r.status === 401) { const t = await askToken(); if (!t) return; return window._dlClient(name); }
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const blob = await r.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = name;
-      a.click();
-      URL.revokeObjectURL(a.href);
-      toast('已下载（含配置）。Windows 双击即用；macOS/Linux 先 chmod +x');
-    } catch (e) { toast(e.message, true); }
-  };
-  // 一键引导命令构建（token 已在本页，直接注入命令文本）
-  const buildCmds = () => {
-    const hub = location.origin;
-    const hn = (document.getElementById('bsHost').value || '').trim();
-    const hnU = hn ? ' --hostname ' + hn : '';
-    document.getElementById('cmdUnix').value =
-      `curl -fsSL ${hub}/agent.sh | sh -s -- --server ${hub} --token ${s.token}${hnU}`;
-    const hnW = hn ? ` -Hostname '${hn}'` : '';
-    document.getElementById('cmdWin').value =
-      `powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr '${hub}/agent.ps1' -OutFile $env:TEMP\\sh-agent.ps1; & $env:TEMP\\sh-agent.ps1 -Server '${hub}' -Token '${s.token}'${hnW}"`;
-    document.getElementById('cmdPull').value =
-      `~/.skill-hub/skill-hub pull --server ${hub} --token ${s.token} --dest ~/.agents/skills`;
-    document.getElementById('cmdDaemon').value =
-      `nohup ~/.skill-hub/skill-hub daemon --server ${hub} --token ${s.token}${hnU} > ~/.skill-hub/daemon.log 2>&1 &`;
-  };
-  buildCmds();
-  document.getElementById('bsHost').addEventListener('input', buildCmds);
-  window._copyCmd = id => {
-    const el = document.getElementById(id);
-    el.select();
-    navigator.clipboard.writeText(el.value).then(() => toast('已复制，去目标机器终端粘贴执行')).catch(() => {
-      document.execCommand('copy'); toast('已复制');
-    });
-  };
-  const btn = document.getElementById('glmtest');
-  if (btn) btn.onclick = async () => {
-    document.getElementById('glmres').textContent = '测试中…';
-    try {
-      const r = await apiPost('/settings/glm-test');
-      document.getElementById('glmres').innerHTML = `<span style="color:var(--ok)">✓ 连通正常，模型回复: ${esc(r.reply)}</span>`;
-    } catch (e) {
-      document.getElementById('glmres').innerHTML = `<span style="color:var(--danger)">✗ ${esc(e.message)}</span>`;
-    }
+      await apiPost('/password', {old: old_, new: nw});
+      document.getElementById('pwmsg').innerHTML = '<span style="color:var(--ok)">✓ 已修改</span>';
+      document.getElementById('pwold').value = ''; document.getElementById('pwnew').value = '';
+    } catch (e) { document.getElementById('pwmsg').innerHTML = '<span style="color:var(--danger)">✗ ' + esc(e.message) + '</span>'; }
   };
 }
-
 
 /* ---------- 远程调用 ---------- */
 async function pageJobs() {
@@ -968,4 +1040,4 @@ window._jobDetail = async id => {
   } catch (e) { box.innerHTML = `<div class="panel" style="color:var(--danger)">${esc(e.message)}</div>`; }
 };
 
-route();
+boot();

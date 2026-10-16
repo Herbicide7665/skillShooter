@@ -1,4 +1,4 @@
-module skill-hub
+module skill-manager
 
 go 1.21
 

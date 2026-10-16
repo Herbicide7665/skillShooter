@@ -216,3 +216,28 @@ skill-hub.exe（单二进制）
 6. **GitHub 私库**：Herbicide7665/skill-hub（PAT 经 VPS bw CLI 一条 shell 取回不落盘，push 后即删临时 remote；API+匿名 404 双重确认 private:true）
 
 部署教训（复用）：**pkill -f 'skill-hub daemon' 会匹配同一命令行里重启命令的 daemon 字样自杀**——pkill 与重启必须拆两次 SSH 调用；daemon 的 --token 从 serve.log head 抓取有 race（serve 未写完 token 行→空 token 401），直接用 .token 文件。本机 config.json 曾指向死端口 8799（残留），已修正为 VPS。
+
+
+## 十八、v2.1：用户认证 / LLM 自定义 / 版本留存 / 更名（2026-10-16）
+
+### 18.1 需求与落地
+| # | 需求 | 落地 |
+|---|---|---|
+| 1 | 后台不绑死 GLM，LLM 自定义配置 | 三源配置（env > 设置页 > config.yaml），任意 OpenAI 兼容端点 + Anthropic 协议自动选择；设置页在线改配置热生效，key 脱敏展示 |
+| 2 | 后台留存 skill 历史版本 | 确认存储层本就纯追加（versions/blobs 无清理逻辑）；UI 补齐：详情页文件浏览器加版本选择器 + 任意版本 tar.gz 下载 |
+| 3 | 后台用用户认证，token 只留 API | users/sessions 表 + 登录页 + HttpOnly 会话 cookie（30d）；PBKDF2 口令哈希；admin 可管理用户/重置密码；浏览器不再接触 token；API 三通道（签名/明文 X-Token）保留 |
+| 4 | 更名（skill-hub 与既有项目撞名） | 全量更名 Skill Manager / skill-manager（module、二进制、数据目录 ~/.skill-manager、skillmanager.db、SKILLMANAGER_* env、UI、脚本）；旧 yaml 键/env/数据库兼容 |
+
+### 18.2 顺带修复的既有缺陷
+- 签名（X-Sign）请求打 admin 端点误判 401（requireRole 二次解析触发 nonce 重放判定）→ per-request context 缓存，签名每请求只验证一次
+- `GET /api/settings` 把主 token 回给任意有效 token（user 可提权读取）→ 现按 principal 角色过滤
+
+### 18.3 测试
+- Go 测试套件（internal/server/auth_test.go）：签名 admin 端点、nonce 重放拒绝、登录会话、user 角色隔离（403/空任务/不可读主 token）、匿名 401、LLM 自定义配置热生效（mock OpenAI 端点）、版本留存（两版本可读）
+- 实机 smoke（临时 db + :8899）：登录/会话访问/匿名 401/token API/settings 脱敏/user token 隔离/push 两版本/旧版本文件回读 全绿
+- 交叉编译 5 平台（win/linux×2/darwin×2）通过
+
+### 18.4 兼容性说明
+- 旧 X-Token 认证、旧 skillhub.db、glm_* yaml 键、GLM_API_KEY env 全部兼容
+- 已分发的旧内嵌配置二进制不受影响（读自身尾部）；新下载的客户端 marker 换代，旧客户端需重新下载
+- 初始 admin 账号：首启生成随机密码打印在启动日志（仅一次），或 SKILLMANAGER_ADMIN_PASSWORD 指定

@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"skill-hub/internal/pusher"
-	"skill-hub/internal/store"
+	"skill-manager/internal/pusher"
+	"skill-manager/internal/store"
 )
 
 type Options struct {
@@ -115,8 +115,8 @@ func log(f string, a ...interface{}) {
 
 func openLogFile() {
 	home, _ := os.UserHomeDir()
-	os.MkdirAll(filepath.Join(home, ".skill-hub"), 0o755)
-	if f, err := os.OpenFile(filepath.Join(home, ".skill-hub", "daemon.log"),
+	os.MkdirAll(filepath.Join(home, ".skill-manager"), 0o755)
+	if f, err := os.OpenFile(filepath.Join(home, ".skill-manager", "daemon.log"),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
 		logFile = f
 	}
@@ -125,7 +125,7 @@ func openLogFile() {
 // Run 阻塞运行常驻客户端
 func Run(opt Options) error {
 	home, _ := os.UserHomeDir()
-	stateDir = filepath.Join(home, ".skill-hub")
+	stateDir = filepath.Join(home, ".skill-manager")
 	os.MkdirAll(stateDir, 0o755)
 	openLogFile()
 	if len(opt.Roots) == 0 {
@@ -424,7 +424,7 @@ func pickAgentCLI() string {
 
 func executeJob(opt Options, job *hubJob) (status, cli string, report map[string]interface{}) {
 	home, _ := os.UserHomeDir()
-	workdir := filepath.Join(home, ".skill-hub", "jobs", fmt.Sprint(job.ID))
+	workdir := filepath.Join(home, ".skill-manager", "jobs", fmt.Sprint(job.ID))
 	os.MkdirAll(workdir, 0o755)
 
 	started := time.Now().UTC().Format(time.RFC3339)

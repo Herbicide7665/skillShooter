@@ -9,8 +9,8 @@ import (
 	"strings"
 	"unicode"
 
-	"skill-hub/internal/llm"
-	"skill-hub/internal/store"
+	"skill-manager/internal/llm"
+	"skill-manager/internal/store"
 )
 
 func TrimPercent(s string) string {

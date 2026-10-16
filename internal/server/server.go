@@ -3,6 +3,7 @@ package server
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	"compress/gzip"
 	"embed"
 	"encoding/json"
@@ -17,17 +18,18 @@ import (
 	"strings"
 	"time"
 
-	"skill-hub/internal/analysis"
-	"skill-hub/internal/daemon"
-	"skill-hub/internal/diffutil"
-	"skill-hub/internal/llm"
-	"skill-hub/internal/store"
+	"skill-manager/internal/analysis"
+	"skill-manager/internal/daemon"
+	"skill-manager/internal/diffutil"
+	"skill-manager/internal/llm"
+	"skill-manager/internal/store"
 )
 
 type Server struct {
-	st     *store.Store
-	llm    *llm.Client
-	nonces *nonceCache
+	st        *store.Store
+	llm       *llm.Client
+	nonces    *nonceCache
+	loginGate loginGate
 }
 
 func New(st *store.Store, lc *llm.Client) *Server {
@@ -41,6 +43,9 @@ func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 }
 
 func writeErr(w http.ResponseWriter, code int, msg string) {
+	if w == nil {
+		return // signedToken 在 principal() 预检路径下无 ResponseWriter，错误由调用方统一写
+	}
 	writeJSON(w, code, map[string]string{"error": msg})
 }
 
@@ -56,20 +61,36 @@ func (s *Server) Serve(mux *http.ServeMux) {
 
 func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 	parts := splitPath(strings.TrimPrefix(r.URL.Path, "/api"))
-	// whoami 任何 token（含无效）都返回角色，供客户端/UI 自检
-	if len(parts) == 1 && parts[0] == "whoami" && r.Method == "GET" {
-		ok, role := s.st.TokenRole(r.Header.Get("X-Token"))
-		writeJSON(w, 200, map[string]interface{}{"ok": ok, "role": role})
+	// 匿名端点：登录/登出/自检
+	if len(parts) == 1 && parts[0] == "login" && r.Method == "POST" {
+		s.handleLogin(w, r)
 		return
 	}
-	// 公网部署：所有 API（含读）都要 token，防内容裸奔
-	// 新协议：带 X-Sign 签名头走 HMAC 校验（token 不明文上 wire）；否则回落 X-Token（旧客户端兼容）
-	if r.Header.Get("X-Sign") != "" {
-		if !s.verifySigned(w, r) {
-			return
+	if len(parts) == 1 && parts[0] == "logout" && r.Method == "POST" {
+		if ck, err := r.Cookie("Session"); err == nil {
+			s.st.DeleteSession(ck.Value)
 		}
-	} else if !s.checkToken(r) {
-		writeErr(w, 401, "token 无效")
+		http.SetCookie(w, &http.Cookie{Name: "Session", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+		writeJSON(w, 200, map[string]string{"ok": "1"})
+		return
+	}
+	// whoami 自检：会话或 token 任一即可，返回身份供 UI/客户端判断
+	if len(parts) == 1 && parts[0] == "whoami" && r.Method == "GET" {
+		if ck, err := r.Cookie("Session"); err == nil {
+			if _, username, role, ok := s.st.SessionPrincipal(ck.Value); ok {
+				writeJSON(w, 200, map[string]interface{}{"ok": true, "role": role, "user": username, "auth": "session"})
+				return
+			}
+		}
+		ok, role := s.st.TokenRole(r.Header.Get("X-Token"))
+		writeJSON(w, 200, map[string]interface{}{"ok": ok, "role": role, "auth": "token"})
+		return
+	}
+	// 认证统一在 resolvePrincipal：会话 cookie > X-Sign 签名 > X-Token 明文（旧客户端兼容，待淘汰）
+	// 公网部署：所有 API（含读）都要身份，防内容裸奔
+	r, ok, _ := s.authGate(r)
+	if !ok {
+		writeErr(w, 401, "未认证（浏览器请登录，API 请带 token 或签名）")
 		return
 	}
 	// parts[0] 是资源名
@@ -226,18 +247,25 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case parts[0] == "jobs":
 		s.handleJobs(w, r, parts)
 	case parts[0] == "settings" && r.Method == "GET":
-		tok, _ := s.st.EnsureToken()
 		cfg := s.llm.Config()
-		writeJSON(w, 200, map[string]interface{}{
-			"token":     tok,
-			"glm":       map[string]interface{}{"enabled": cfg.Enabled(), "base_url": cfg.BaseURL, "model": cfg.Model},
-		})
-	case parts[0] == "settings" && len(parts) == 2 && parts[1] == "glm-test" && r.Method == "POST":
+		out := map[string]interface{}{
+			"llm": map[string]interface{}{
+				"enabled": cfg.Enabled(), "base_url": cfg.BaseURL, "model": cfg.Model,
+				"key_masked": maskKey(cfg.APIKey),
+			},
+		}
+		// 管理员主 token 只回给 admin（user/匿名不可见，防提权读取）
+		if ok, role := s.principal(r); ok && role == "admin" {
+			tok, _ := s.st.EnsureToken()
+			out["token"] = tok
+		}
+		writeJSON(w, 200, out)
+	case parts[0] == "settings" && len(parts) == 2 && (parts[1] == "llm-test" || parts[1] == "glm-test") && r.Method == "POST":
 		if !s.requireRole(w, r, true) {
 			return
 		}
 		if !s.llm.Config().Enabled() {
-			writeErr(w, 400, "GLM 未配置（config.yaml 或 env 无 key）")
+			writeErr(w, 400, "LLM 未配置（api_key 与 model 必填；config.yaml / env / 设置页任一来源）")
 			return
 		}
 		out, err := s.llm.Test(r.Context())
@@ -246,9 +274,151 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, 200, map[string]string{"reply": out})
+	case parts[0] == "settings" && len(parts) == 2 && parts[1] == "llm" && r.Method == "POST":
+		if !s.requireRole(w, r, true) {
+			return
+		}
+		var body struct {
+			APIKey  string `json:"api_key"`
+			BaseURL string `json:"base_url"`
+			Model   string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+		cfg := s.llm.Config()
+		if body.APIKey != "" { // 留空 = 保留现有 key
+			cfg.APIKey = strings.TrimSpace(body.APIKey)
+			s.st.SetMeta("llm_api_key", cfg.APIKey)
+		}
+		if body.BaseURL != "" {
+			cfg.BaseURL = strings.TrimSpace(body.BaseURL)
+			s.st.SetMeta("llm_base_url", cfg.BaseURL)
+		}
+		if body.Model != "" {
+			cfg.Model = strings.TrimSpace(body.Model)
+			s.st.SetMeta("llm_model", cfg.Model)
+		}
+		s.llm.SetConfig(cfg)
+		writeJSON(w, 200, map[string]interface{}{"ok": true, "enabled": cfg.Enabled()})
+	case parts[0] == "password" && r.Method == "POST":
+		// 本人改密：仅会话身份（token 身份没有用户归属）
+		ck, err := r.Cookie("Session")
+		if err != nil {
+			writeErr(w, 400, "改密需要登录会话")
+			return
+		}
+		uid, _, _, ok := s.st.SessionPrincipal(ck.Value)
+		if !ok {
+			writeErr(w, 401, "会话已过期")
+			return
+		}
+		var body struct {
+			Old string `json:"old"`
+			New string `json:"new"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.New == "" {
+			writeErr(w, 400, "需要 old/new")
+			return
+		}
+		if err := s.st.ChangePassword(uid, body.Old, body.New); err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]string{"ok": "1"})
+	case parts[0] == "users" && r.Method == "GET":
+		if !s.requireRole(w, r, true) {
+			return
+		}
+		us, err := s.st.ListUsers()
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, us)
+	case parts[0] == "users" && len(parts) == 2 && parts[1] == "create" && r.Method == "POST":
+		if !s.requireRole(w, r, true) {
+			return
+		}
+		var body struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+			Role     string `json:"role"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+		if body.Role == "" {
+			body.Role = "user"
+		}
+		if err := s.st.CreateUser(body.Username, body.Password, body.Role); err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]string{"ok": "1"})
+	case parts[0] == "users" && len(parts) == 2 && parts[1] == "delete" && r.Method == "POST":
+		if !s.requireRole(w, r, true) {
+			return
+		}
+		var body struct {
+			ID       int64  `json:"id"`
+			Username string `json:"username"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || (body.ID == 0 && body.Username == "") {
+			writeErr(w, 400, "需要 id 或 username")
+			return
+		}
+		id := body.ID
+		if id == 0 {
+			id = s.st.UserIDByName(body.Username)
+		}
+		if s.st.CountAdmins() == 1 && s.st.UserRoleByID(id) == "admin" {
+			writeErr(w, 400, "不能删除最后一个管理员")
+			return
+		}
+		if err := s.st.DeleteUser(id); err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]string{"ok": "1"})
+	case parts[0] == "users" && len(parts) == 2 && parts[1] == "password" && r.Method == "POST":
+		if !s.requireRole(w, r, true) {
+			return
+		}
+		var body struct {
+			ID       int64  `json:"id"`
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Password == "" {
+			writeErr(w, 400, "需要 password")
+			return
+		}
+		id := body.ID
+		if id == 0 && body.Username != "" {
+			id = s.st.UserIDByName(body.Username)
+		}
+		if err := s.st.SetUserPassword(id, body.Password); err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]string{"ok": "1"})
 	default:
 		writeErr(w, 404, "未知 API")
 	}
+}
+
+// maskKey API key 脱敏展示（前 4 后 4）
+func maskKey(k string) string {
+	if k == "" {
+		return ""
+	}
+	if len(k) <= 8 {
+		return "****"
+	}
+	return k[:4] + "..." + k[len(k)-4:]
 }
 
 func splitPath(p string) []string {
@@ -261,22 +431,51 @@ func splitPath(p string) []string {
 	return out
 }
 
-func (s *Server) checkToken(r *http.Request) bool {
-	ok, _ := s.st.TokenRole(r.Header.Get("X-Token"))
-	return ok
+// ---- 认证 ----
+
+// principalRole 每请求缓存一次身份解析结论（签名校验含 nonce 一次性消耗，
+// 网关与 requireRole 多次解析必须复用同一结论，否则第二次会误判重放 401）
+type principalCacheKey struct{}
+
+// principal 读缓存的身份结论（须先经 authGate 解析）
+func (s *Server) principal(r *http.Request) (bool, string) {
+	if v, ok := r.Context().Value(principalCacheKey{}).([2]interface{}); ok {
+		return v[0].(bool), v[1].(string)
+	}
+	return s.resolvePrincipal(r)
 }
 
-// checkAdmin 管理员校验
-func (s *Server) checkAdmin(r *http.Request) bool {
-	ok, role := s.st.TokenRole(r.Header.Get("X-Token"))
-	return ok && role == "admin"
+// authGate 网关校验：解析身份并写入 context 缓存
+func (s *Server) authGate(r *http.Request) (*http.Request, bool, string) {
+	ok, role := s.resolvePrincipal(r)
+	if ok {
+		r = r.WithContext(context.WithValue(r.Context(), principalCacheKey{}, [2]interface{}{ok, role}))
+	}
+	return r, ok, role
+}
+
+func (s *Server) resolvePrincipal(r *http.Request) (bool, string) {
+	if ck, err := r.Cookie("Session"); err == nil {
+		if _, _, role, ok := s.st.SessionPrincipal(ck.Value); ok {
+			return true, role
+		}
+	}
+	if r.Header.Get("X-Sign") != "" {
+		tok, ok := s.signedToken(nil, r)
+		if !ok {
+			return false, ""
+		}
+		_, role := s.st.TokenRole(tok)
+		return true, role
+	}
+	return s.st.TokenRole(r.Header.Get("X-Token"))
 }
 
 // requireRole 通用门：校验并写 401/403
 func (s *Server) requireRole(w http.ResponseWriter, r *http.Request, admin bool) bool {
-	ok, role := s.st.TokenRole(r.Header.Get("X-Token"))
+	ok, role := s.principal(r)
 	if !ok {
-		writeErr(w, 401, "token 无效")
+		writeErr(w, 401, "未认证（浏览器请登录，API 请带 token 或签名）")
 		return false
 	}
 	if admin && role != "admin" {
@@ -786,8 +985,8 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleFileDL(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(r.URL.Path, "/dl/")
 	if name == "" || strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") ||
-		!strings.HasPrefix(name, "skill-hub") {
-		writeErr(w, 403, "只允许下载 skill-hub 二进制")
+		!strings.HasPrefix(name, "skill-manager") {
+		writeErr(w, 403, "只允许下载 skill-manager 二进制")
 		return
 	}
 	ex, err := os.Executable()
@@ -904,20 +1103,40 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request, parts []stri
 // ---- 已配置客户端下载（二进制尾部追加 server/token，双击即用）----
 
 func (s *Server) handleClientDL(w http.ResponseWriter, r *http.Request) {
+	// 该响应含 token，必须认证后才能取：会话（管理员后台下载）或签名请求（客户端自更新）
+	var reqRole, embedToken string
 	if r.Header.Get("X-Sign") != "" {
-		if !s.verifySigned(w, r) {
+		tok, ok := s.signedToken(w, r)
+		if !ok {
 			return
 		}
-	} else if !s.checkToken(r) {
-		// 该响应含 token，必须认证后才能取
-		writeErr(w, 401, "token 无效")
+		_, reqRole = s.st.TokenRole(tok)
+		embedToken = tok
+	} else if ck, err := r.Cookie("Session"); err == nil {
+		if _, _, role, ok := s.st.SessionPrincipal(ck.Value); ok {
+			reqRole = role
+		}
+	} else if ok, role := s.st.TokenRole(r.Header.Get("X-Token")); ok {
+		reqRole = role
+		embedToken = r.Header.Get("X-Token")
+	}
+	if reqRole == "" {
+		writeErr(w, 401, "未认证")
 		return
+	}
+	if embedToken == "" {
+		// 会话（浏览器）下载：admin 会话内嵌主 token；user 会话只能拿与自身角色一致的既有 token
+		if reqRole != "admin" {
+			writeErr(w, 403, "浏览器下载客户端请让管理员操作（避免 user 客户端提权）")
+			return
+		}
+		embedToken, _ = s.st.EnsureToken()
 	}
 	name := strings.TrimPrefix(r.URL.Path, "/api/client/")
 	allowed := map[string]bool{
-		"skill-hub.exe": true, "skill-hub": true,
-		"skill-hub-linux-amd64": true, "skill-hub-linux-arm64": true,
-		"skill-hub-darwin-amd64": true, "skill-hub-darwin-arm64": true,
+		"skill-manager.exe": true, "skill-manager": true,
+		"skill-manager-linux-amd64": true, "skill-manager-linux-arm64": true,
+		"skill-manager-darwin-amd64": true, "skill-manager-darwin-arm64": true,
 	}
 	if !allowed[name] {
 		writeErr(w, 403, "非法文件名")
@@ -935,11 +1154,9 @@ func (s *Server) handleClientDL(w http.ResponseWriter, r *http.Request) {
 	}
 	// 内嵌"请求者自己的 token"：普通用户下载的客户端带 user token（不能下发任务），
 	// 若用管理员主 token 内嵌则任何持有 user token 的人都能提权下载到 admin 客户端
-	_, reqRole := s.st.TokenRole(r.Header.Get("X-Token"))
-	embedToken := r.Header.Get("X-Token")
-	if reqRole == "admin" {
-		// 管理员下载：内嵌主 token（保持既有行为）
-		embedToken, _ = s.st.EnsureToken()
+	if _, embedRole := s.st.TokenRole(embedToken); embedRole == "admin" && reqRole != "admin" {
+		writeErr(w, 403, "user 身份不能下载内嵌 admin token 的客户端")
+		return
 	}
 	scheme := "http"
 	if r.TLS != nil {

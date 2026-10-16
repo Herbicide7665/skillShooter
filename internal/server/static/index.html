@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Skill Hub · 跨机 Skill 管理平台</title>
+<title>Skill Manager · 跨机 Skill 管理平台</title>
 <link rel="stylesheet" href="/style.css">
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 </head>
 <body>
 <nav class="topnav">
-  <div class="brand">⭐ Skill Hub</div>
+  <div class="brand">⭐ Skill Manager</div>
   <div class="navlinks" id="navlinks">
     <a href="#/dashboard" data-r="dashboard">总览</a>
     <a href="#/skills" data-r="skills">Skills</a>
@@ -19,6 +19,7 @@
     <a href="#/jobs" data-r="jobs">远程调用</a>
     <a href="#/settings" data-r="settings">设置</a>
   </div>
+  <div id="userbox" style="margin-left:auto;display:flex;align-items:center"></div>
 </nav>
 <main id="app"><div class="loading">加载中…</div></main>
 <div id="toast" class="toast hidden"></div>

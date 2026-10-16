@@ -135,3 +135,8 @@ pre.code {
 code.inline { background: #f0f2f6; border-radius: 4px; padding: 1px 6px; font-family: var(--mono); font-size: 12px; }
 .legend { flex-wrap: wrap; row-gap: 8px; }
 .famchip { white-space: nowrap; }
+
+/* 登录页 */
+.login-wrap { display: flex; justify-content: center; padding-top: 12vh; }
+.login-panel { width: 360px; padding: 28px 30px; }
+.login-panel input { width: 100%; box-sizing: border-box; }

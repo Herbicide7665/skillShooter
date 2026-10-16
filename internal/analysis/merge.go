@@ -7,8 +7,8 @@ import (
 
 	"encoding/json"
 
-	"skill-hub/internal/llm"
-	"skill-hub/internal/store"
+	"skill-manager/internal/llm"
+	"skill-manager/internal/store"
 )
 
 // MergeProposal GLM 生成合并建议

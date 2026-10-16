@@ -81,9 +81,10 @@ func signString(r *http.Request, bodySHA string) string {
 	return strings.Join([]string{r.Method, pq, r.Header.Get("X-Timestamp"), r.Header.Get("X-Nonce"), bodySHA}, "\n")
 }
 
-// verifySigned 校验一个带签名头的请求；成功返回 true 并恢复 r.Body 供后续 handler 读取。
+// signedToken 校验一个带签名头的请求；成功返回匹配到的 token（供角色判定）并恢复 r.Body。
+// 失败时把 401 写到 w 并返回 ok=false（不降级到明文模式）。
 // 校验链：Key-ID 找 token → 时间窗 → nonce 防重放 → HMAC → X-Body-SHA256 比对。
-func (s *Server) verifySigned(w http.ResponseWriter, r *http.Request) bool {
+func (s *Server) signedToken(w http.ResponseWriter, r *http.Request) (string, bool) {
 	keyID := r.Header.Get("X-Key-ID")
 	ts := r.Header.Get("X-Timestamp")
 	nonce := r.Header.Get("X-Nonce")
@@ -91,32 +92,32 @@ func (s *Server) verifySigned(w http.ResponseWriter, r *http.Request) bool {
 	declared := r.Header.Get("X-Body-SHA256")
 	if keyID == "" || ts == "" || nonce == "" || sign == "" {
 		writeErr(w, 401, "缺少签名头")
-		return false
+		return "", false
 	}
 	tsSec, err := strconv.ParseInt(strings.TrimSpace(ts), 10, 64)
 	if err != nil {
 		writeErr(w, 401, "时间戳格式错误")
-		return false
+		return "", false
 	}
 	if d := time.Since(time.Unix(tsSec, 0)); d > signTimeWindow || d < -signTimeWindow {
 		writeErr(w, 401, "签名时间窗过期")
-		return false
+		return "", false
 	}
 	if !s.nonces.Check(nonce) {
 		writeErr(w, 401, "nonce 已使用（疑似重放）")
-		return false
+		return "", false
 	}
 	tok, ok := s.tokenByKeyID(keyID)
 	if !ok {
 		writeErr(w, 401, "token 无效")
-		return false
+		return "", false
 	}
 	// body 摘要：读进内存计算（客户端各端点 body 均为 JSON/小表单；大包 push 由客户端声明 X-Body-SHA256
 	// 并在签名串中引用该声明值，服务端同样以声明值参与 HMAC，再读全量比对摘要防篡改）
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		writeErr(w, 400, "读取请求体失败")
-		return false
+		return "", false
 	}
 	sum := sha256.Sum256(body)
 	computed := hex.EncodeToString(sum[:])
@@ -124,16 +125,16 @@ func (s *Server) verifySigned(w http.ResponseWriter, r *http.Request) bool {
 		declared = computed
 	} else if declared != computed {
 		writeErr(w, 401, "body 摘要不匹配（内容被篡改）")
-		return false
+		return "", false
 	}
 	mac := hmac.New(sha256.New, []byte(tok))
 	mac.Write([]byte(signString(r, declared)))
 	if !hmac.Equal(mac.Sum(nil), mustHexDecode(sign)) {
 		writeErr(w, 401, "签名校验失败")
-		return false
+		return "", false
 	}
 	r.Body = io.NopCloser(strings.NewReader(string(body)))
-	return true
+	return tok, true
 }
 
 func mustHexDecode(s string) []byte {
