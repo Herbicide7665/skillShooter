@@ -255,3 +255,16 @@ skill-hub.exe（单二进制）
 测试：Go 7 用例全绿（新增 TestDeviceScope/TestUserTokenCannotWeb，含认领-锁死-跨设备 403-改绑生效-未绑定拒绝-主 token 不可读）；本机 smoke 平板两阶段验证；**修复掩码反查死锁（grep 时代坑复发）**。
 
 部署：VPS serve+daemon 已换 skillshooter（旧 skillhub.db→skillshooter.db 拷贝迁移，备份留档 bak-20261016-1605）；selfpush.sh cron 已指新二进制并试跑成功（31 skill 推送/0 新增符合增量语义）；web admin 初始密码打印于启动日志（已交付用户）；旧主 token 283b.../vps 心跳在线/LLM 连通全验证通过。
+
+
+## 二十、v2.3：系统 skill 判定修正 / i18n / 设置侧边栏 / UI 改版（2026-10-16）
+
+| # | 需求 | 落地 |
+|---|---|---|
+| 1 | access/build-* 等 Claude Code 内置也属系统 skill | 迁移回填名单扩至 37 项（access/build-mcp*/configure/example-*/agent-development 等 29 个新增 + Drift（首字母大写变体）+ siege/solo/stripe-best-practices/visualize） |
+| 2 | 语言切换 + 英文 | I18N 双语字典 + t() + 导航栏 EN/中 按钮（localStorage 记忆）；散点文案 LANG 三元式处理 |
+| 3 | 设置页左侧层级侧边栏 | settings-layout 栅格（sticky 侧栏 + 图标锚点导航 + 平滑滚动 + 滚动高亮联动；窄屏折叠横排） |
+| 4 | git 提交新版本 | commit + push Herbicide7665/skillShooter（bundle+hosts 路线） |
+| 5 | UI 统一审美 | 设计系统重做：深蓝渐变导航（选中态品牌蓝药丸）、卡片左缘渐变条、按钮渐变+悬浮位移、输入框 focus 光环、表头大写字距、统一 12px 圆角与两级阴影体系 |
+
+验证：JS 语法（node Function 编译）+ Go 测试 7 用例 + 浏览器实机 e2e（登录→EN 切换全页文案→设置侧边栏六节锚点→Skills 隐藏系统开关默认隐藏 my-own 单显→取消隐藏 access/build-mcp 回显 3 项→migrate 重启回填 is_system 断言）。

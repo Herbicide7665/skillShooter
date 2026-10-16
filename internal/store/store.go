@@ -204,7 +204,15 @@ CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src_id);
 		'android-dev','ios-dev','plugin-creator','skill-creator','dynamic-workflows',
 		'video2code','video2code-3d','video2fullstack','url2video','web-replicate','zcode-computer-use',
 		'diagnosing-commands','diagnosing-hooks','diagnosing-mcp','diagnosing-plugins','diagnosing-skills',
-		'zcode-configuration-guide','zcode-guide','restore-legacy-sessions','playground')`)
+		'zcode-configuration-guide','zcode-guide','restore-legacy-sessions','playground',
+		'access','build-mcp','build-mcp-app','build-mcp-server','build-mcpb','configure',
+		'example-command','example-skill','frontend-design','hook-development','command-development',
+		'agent-development','skill-development','mcp-integration','plugin-settings','plugin-structure',
+		'project-artifact','writing-hookify-rules','receipts','math-olympiad','session-report',
+		'cardputer-buddy','m5-onboard','claude-security','claude-md-improver','claude-automation-recommender',
+		'Agent Development','Command Development','Hook Development','MCP Integration',
+		'Plugin Settings','Plugin Structure','Skill Development','Writing Hookify Rules',
+		'siege','solo','stripe-best-practices','visualize')`)
 	return err
 }
 

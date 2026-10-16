@@ -2,6 +2,87 @@
 const $app = document.getElementById('app');
 const $nav = document.querySelectorAll('#navlinks a');
 
+/* ---- i18n：中英双语，localStorage 记忆 ---- */
+const I18N = {
+  zh: {
+    nav_dashboard: '总览', nav_graph: '关系图', nav_dedup: '去重合并', nav_devices: '设备',
+    nav_jobs: '远程调用', nav_settings: '设置',
+    login_title: 'SkillShooter 登录', login_user: '用户名', login_pass: '密码',
+    login_btn: '登 录', login_need: '请输入用户名和密码',
+    role_admin: '管理员', role_user: '用户', logout: '退出',
+    loading: '加载中…',
+    dash_title: '总览', dash_skillcount: 'Skill 总数', dash_vercount: '版本总数', dash_machines: '接入机器',
+    dash_dupopen: '待处理重复组', dash_edges: '关联边', dash_blob: '内容存储',
+    dash_families: 'skill 家族（按命名聚类）', dash_families_empty: '尚未生成。到「关系图」页点「更新关系」，LLM 会按内容聚类并固化。',
+    dash_onlinestatus: '设备在线状态（30min 心跳探活，超 35min 判离线）', dash_recent: '最近变更流',
+    dash_online: '● 在线', dash_offline: '○ 离线', dash_lastactive: '最后活跃',
+    dash_skilln: 'skill 数', dash_pushn: '推送次数', dash_monline: '来源机器', dash_type: '类型', dash_version: '版本', dash_time: '时间', dash_skill: 'Skill',
+    dash_empty_recent: '暂无记录，先用 skillshooter push 推送数据', dash_no_machines: '尚无设备接入',
+    skills_title: 'Skills', skills_search: '搜索名称或描述…', skills_allmachines: '全部机器', skills_allfams: '全部分类',
+    skills_hidesys: '隐藏系统自带', skills_hidedup: '隐藏重复', skills_count: '个 skill', skills_noresult: '无匹配结果',
+    skills_col_name: '名称', skills_col_desc: '描述', skills_col_machine: '机器', skills_col_version: '版本', skills_col_updated: '更新时间', skills_col_hash: '哈希',
+    detail_versions: '版本时间线（演变路线）', detail_files: '文件浏览（可选历史版本）', detail_edges: '关联关系',
+    detail_vdiff: '查看 SKILL.md Diff', detail_pickfile: '选择文件查看内容', detail_downtar: '下载此版本 tar.gz',
+    detail_issystem: '系统 skill', detail_marksys: '标记为系统 skill', detail_unmark: '取消系统标记',
+    detail_outedges: '出边（本 skill 指向）', detail_inedges: '入边（指向本 skill）',
+    graph_title: '关系图', graph_rescan: '更新关系（引用边 + LLM 关系/家族重构，固化）', graph_hidesys: '隐藏系统 skill',
+    dedup_title: '去重与合并工作台', dedup_scan: '执行去重扫描', dedup_open: '待处理', dedup_done: '已处理', dedup_ignore: '忽略此组',
+    dedup_propose: 'GLM 生成合并建议', dedup_adopt: '采纳（落为新版本，打 merged 标记）', dedup_cancel: '取消',
+    devices_title: '设备管理', devices_dispatch: '⬇ 下发部署（同步+部署分配 skill）', devices_pull: '仅部署分配 skill',
+    devices_assign: '分配 skill…', devices_save: '保存分配', devices_history: '下发指令历史（最近 50 条）',
+    jobs_title: '远程调用', jobs_send: '下发', jobs_list: '任务列表', jobs_none: '暂无任务',
+    settings_title: '设置', settings_onestep: '一键接入（免命令行，推荐）', settings_token: 'API Token（程序化调用凭据）',
+    settings_usertok: '用户 Token 管理', settings_mkuser: '创建用户 token', settings_llm: 'LLM 接入（自定义模型）',
+    settings_changepw: '修改我的密码', settings_users: '用户账号管理', settings_newmachine: '新机器接入（复制即用）',
+    sys_admin_only: '仅管理员可见',
+  },
+  en: {
+    nav_dashboard: 'Dashboard', nav_graph: 'Graph', nav_dedup: 'Dedup', nav_devices: 'Devices',
+    nav_jobs: 'Jobs', nav_settings: 'Settings',
+    login_title: 'SkillShooter Sign In', login_user: 'Username', login_pass: 'Password',
+    login_btn: 'Sign In', login_need: 'Please enter username and password',
+    role_admin: 'Admin', role_user: 'User', logout: 'Sign out',
+    loading: 'Loading…',
+    dash_title: 'Dashboard', dash_skillcount: 'Skills', dash_vercount: 'Versions', dash_machines: 'Machines',
+    dash_dupopen: 'Open dup groups', dash_edges: 'Edges', dash_blob: 'Storage',
+    dash_families: 'Skill families (clustered by name)', dash_families_empty: 'Not generated yet. Go to Graph and click "Update relations"; the LLM clusters by content and persists.',
+    dash_onlinestatus: 'Device online status (30min heartbeat, offline after 35min silence)', dash_recent: 'Recent changes',
+    dash_online: '● Online', dash_offline: '○ Offline', dash_lastactive: 'Last active',
+    dash_skilln: 'skills', dash_pushn: 'pushes', dash_monline: 'Machine', dash_type: 'Type', dash_version: 'Version', dash_time: 'Time', dash_skill: 'Skill',
+    dash_empty_recent: 'No records yet — push data with skillshooter push first', dash_no_machines: 'No devices connected',
+    skills_title: 'Skills', skills_search: 'Search name or description…', skills_allmachines: 'All machines', skills_allfams: 'All families',
+    skills_hidesys: 'Hide built-in', skills_hidedup: 'Hide duplicates', skills_count: 'skills', skills_noresult: 'No results',
+    skills_col_name: 'Name', skills_col_desc: 'Description', skills_col_machine: 'Machine', skills_col_version: 'Versions', skills_col_updated: 'Updated', skills_col_hash: 'Hash',
+    detail_versions: 'Version timeline (evolution)', detail_files: 'File browser (any version)', detail_edges: 'Relations',
+    detail_vdiff: 'View SKILL.md Diff', detail_pickfile: 'Pick a file to view', detail_downtar: 'Download this version (tar.gz)',
+    detail_issystem: 'System skill', detail_marksys: 'Mark as system', detail_unmark: 'Unmark system',
+    detail_outedges: 'Out edges (from this skill)', detail_inedges: 'In edges (to this skill)',
+    graph_title: 'Graph', graph_rescan: 'Update relations (reference edges + LLM clustering, persisted)', graph_hidesys: 'Hide system skills',
+    dedup_title: 'Dedup & Merge Workbench', dedup_scan: 'Run dedup scan', dedup_open: 'Open', dedup_done: 'Processed', dedup_ignore: 'Dismiss',
+    dedup_propose: 'Generate merge proposal (GLM)', dedup_adopt: 'Adopt (new version, merged)', dedup_cancel: 'Cancel',
+    devices_title: 'Devices', devices_dispatch: '⬇ Deploy (sync + assigned skills)', devices_pull: 'Deploy assigned only',
+    devices_assign: 'Assign skills…', devices_save: 'Save assignment', devices_history: 'Dispatch history (last 50)',
+    jobs_title: 'Jobs', jobs_send: 'Dispatch', jobs_list: 'Jobs', jobs_none: 'No jobs yet',
+    settings_title: 'Settings', settings_onestep: 'One-click onboarding (recommended)', settings_token: 'API Token (for programmatic use)',
+    settings_usertok: 'User tokens', settings_mkuser: 'Create user token', settings_llm: 'LLM (custom model)',
+    settings_changepw: 'Change my password', settings_users: 'User accounts', settings_newmachine: 'Onboard a new machine (copy & run)',
+    sys_admin_only: 'Admin only',
+  },
+};
+let LANG = localStorage.getItem('sklang') || 'zh';
+function t(key) { return (I18N[LANG] && I18N[LANG][key]) || I18N.zh[key] || key; }
+function toggleLang() {
+  LANG = LANG === 'zh' ? 'en' : 'zh';
+  localStorage.setItem('sklang', LANG);
+  applyStaticI18n();
+  route();
+  if (state.me) applyRoleNav();
+}
+function applyStaticI18n() {
+  document.getElementById('langBtn').textContent = LANG === 'zh' ? 'EN' : '中';
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+}
+
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -59,13 +140,14 @@ function renderLogin() {
   $app.innerHTML = `
     <div class="login-wrap">
       <div class="panel login-panel">
-        <h2 style="margin-top:0">SkillShooter 登录</h2>
+        <div class="logo">🎯</div>
+        <h2 style="margin-top:0">${t('login_title')}</h2>
         <div class="toolbar" style="flex-direction:column;align-items:stretch;gap:8px">
-          <input type="text" id="lguser" placeholder="用户名" autocomplete="username">
-          <input type="password" id="lgpass" placeholder="密码" autocomplete="current-password">
+          <input type="text" id="lguser" placeholder="${t('login_user')}" autocomplete="username">
+          <input type="password" id="lgpass" placeholder="${t('login_pass')}" autocomplete="current-password">
         </div>
         <div class="toolbar" style="margin-top:10px">
-          <button class="primary" id="lgbtn" style="width:100%">登 录</button>
+          <button class="primary" id="lgbtn" style="width:100%">${t('login_btn')}</button>
         </div>
         <p class="small muted" id="lgmsg"></p>
       </div>
@@ -73,7 +155,7 @@ function renderLogin() {
   const doLogin = async () => {
     const u = document.getElementById('lguser').value.trim();
     const p = document.getElementById('lgpass').value;
-    if (!u || !p) { document.getElementById('lgmsg').textContent = '请输入用户名和密码'; return; }
+    if (!u || !p) { document.getElementById('lgmsg').textContent = t('login_need'); return; }
     try {
       const r = await fetch('/api/login', {method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({username: u, password: p})});
@@ -105,14 +187,15 @@ function applyRoleNav() {
   });
   const ub = document.getElementById('userbox');
   if (state.me) {
-    ub.innerHTML = `<span class="small muted">${esc(state.me.user)} · ${state.me.role === 'admin' ? '管理员' : '用户'}</span>
-      <button style="margin-left:8px;padding:2px 10px" onclick="doLogout()">退出</button>`;
+    ub.innerHTML = `<span class="small">${esc(state.me.user)} · ${state.me.role === 'admin' ? t('role_admin') : t('role_user')}</span>
+      <button style="margin-left:8px;padding:4px 12px" onclick="doLogout()">${t('logout')}</button>`;
   } else {
     ub.innerHTML = '';
   }
 }
 
 async function boot() {
+  applyStaticI18n();
   try {
     const r = await fetch('/api/whoami');
     const d = await r.json();
@@ -169,42 +252,42 @@ async function pageDashboard() {
   const st = await api('/stats');
   const machines = await api('/machines');
   $app.innerHTML = `
-    <h1>总览</h1>
+    <div class="page-head"><h1>${t('dash_title')}</h1></div>
     <div class="cards">
-      <div class="card"><div class="num">${st.skill_count}</div><div class="lbl">Skill 总数</div></div>
-      <div class="card"><div class="num">${st.version_count}</div><div class="lbl">版本总数</div></div>
-      <div class="card"><div class="num">${st.machine_count}</div><div class="lbl">接入机器</div></div>
-      <div class="card"><div class="num">${st.open_dup_groups}</div><div class="lbl">待处理重复组</div></div>
-      <div class="card"><div class="num">${st.edge_count}</div><div class="lbl">关联边</div></div>
-      <div class="card"><div class="num">${fmtBytes(st.blob_bytes)}</div><div class="lbl">内容存储</div></div>
+      <div class="card"><div class="num">${st.skill_count}</div><div class="lbl">${t('dash_skillcount')}</div></div>
+      <div class="card"><div class="num">${st.version_count}</div><div class="lbl">${t('dash_vercount')}</div></div>
+      <div class="card"><div class="num">${st.machine_count}</div><div class="lbl">${t('dash_machines')}</div></div>
+      <div class="card"><div class="num">${st.open_dup_groups}</div><div class="lbl">${t('dash_dupopen')}</div></div>
+      <div class="card"><div class="num">${st.edge_count}</div><div class="lbl">${t('dash_edges')}</div></div>
+      <div class="card"><div class="num">${fmtBytes(st.blob_bytes)}</div><div class="lbl">${t('dash_blob')}</div></div>
     </div>
-    <h2>skill 家族（按命名聚类）</h2>
+    <h2>${t('dash_families')}</h2>
     <div class="panel" style="display:flex;gap:8px;flex-wrap:wrap" id="famchips">
       ${(await api('/families')).slice(0, 10).map(f => `<a href="#" class="famchip" onclick="sessionStorage.setItem('famPreselect','${esc(f.kind + ':' + esc(f.key))}');location.hash='#/skills';return false"><b>${esc(f.key)}</b> <span class="muted">${f.names.length} 个</span></a>`).join('') || '<span class="muted small">尚未生成。到「关系图」页点「更新关系」，GLM 会按内容聚类并固化。</span>'}
     </div>
-    <h2>设备在线状态（30min 心跳探活，超 35min 判离线）</h2>
+    <h2>${t('dash_onlinestatus')}</h2>
     <div id="devbox"><div class="loading">加载中…</div></div>
-    <h2>最近变更流</h2>
-    <table class="tbl"><thead><tr><th>时间</th><th>Skill</th><th>来源机器</th><th>类型</th><th>版本</th></tr></thead><tbody>
+    <h2>${t('dash_recent')}</h2>
+    <table class="tbl"><thead><tr><th>${t('dash_time')}</th><th>${t('dash_skill')}</th><th>${t('dash_generation')}</th><th>${t('dash_type')}</th><th>${t('dash_version')}</th></tr></thead><tbody>
     ${st.recent.map(r => `<tr>
       <td class="muted small">${esc(fmtTime(r.created_at))}</td>
       <td><a href="#/skill/${r.skill_id}">${esc(r.name)}</a></td>
       <td><span class="badge b-machine">${esc(r.machine)}</span></td>
       <td><span class="badge b-${r.kind === 'merged' ? 'merged' : 'push'}">${r.kind === 'merged' ? '合并' : '推送'}</span></td>
       <td class="mono small">v${r.version_id}</td>
-    </tr>`).join('') || '<tr><td colspan="5" class="muted">暂无记录，先用 skillshooter push 推送数据</td></tr>'}
+    </tr>`).join('') || `<tr><td colspan="5" class="muted">${t('dash_empty_recent')}</td></tr>`}
     </tbody></table>`;
   document.getElementById('devbox').innerHTML = `
-    <table class="tbl"><thead><tr><th>设备</th><th>状态</th><th>最后活跃</th><th>skill 数</th><th>推送次数</th></tr></thead><tbody>
+    <table class="tbl"><thead><tr><th>${t('nav_devices')}</th><th>Status</th><th>${t('dash_lastactive')}</th><th>${t('dash_skilln')}</th><th>${t('dash_pushn')}</th></tr></thead><tbody>
     ${machines.map(m => `<tr>
       <td><b>${esc(m.hostname)}</b></td>
-      <td><span class="badge ${m.online ? 'b-push' : 'b-exact'}">${m.online ? '● 在线' : '○ 离线'}</span></td>
+      <td><span class="badge ${m.online ? 'b-push' : 'b-exact'}">${m.online ? t('dash_online') : t('dash_offline')}</span></td>
       <td class="muted small">${esc(fmtTime(m.last_seen))}</td>
       <td>${m.skill_count}</td>
       <td>${m.push_count}</td>
-    </tr>`).join('') || '<tr><td colspan="5" class="muted">尚无设备接入</td></tr>'}
+    </tr>`).join('') || `<tr><td colspan="5" class="muted">${t('dash_no_machines')}</td></tr>`}
     </tbody></table>
-    <p class="muted small">管理分配与主动下发请到 <a href="#/devices">设备页</a>。</p>`;
+    <p class="muted small">${LANG === 'zh' ? '管理分配与主动下发请到 <a href="#/devices">设备页</a>。' : 'Manage assignments & dispatch on the <a href="#/devices">Devices</a> page.'}</p>`;
 }
 
 /* ---------- Skills 列表 ---------- */
@@ -214,17 +297,17 @@ async function pageSkills() {
   state.families = families;
   const pre = sessionStorage.getItem('famPreselect');
   $app.innerHTML = `
-    <h1>Skills</h1>
+    <div class="page-head"><h1>${t('skills_title')}</h1></div>
     <div class="toolbar">
-      <input type="text" id="q" placeholder="搜索名称或描述…" style="min-width:260px">
-      <select id="mfilter"><option value="">全部机器</option>
+      <input type="text" id="q" placeholder="${t('skills_search')}" style="min-width:260px">
+      <select id="mfilter"><option value="">${t('skills_allmachines')}</option>
         ${state.machines.map(m => `<option value="${esc(m.hostname)}">${esc(m.hostname)} (${m.skill_count})</option>`).join('')}
       </select>
-      <select id="ffilter"><option value="">全部分类</option>
+      <select id="ffilter"><option value="">${t('skills_allfams')}</option>
         ${families.map(f => `<option value="${esc(f.kind + ':' + f.key)}">${esc(f.key)}（${f.names.length}）</option>`).join('')}
       </select>
-      <label class="small" style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="hidesys"> 隐藏系统自带</label>
-      <label class="small" style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="hidedup"> 隐藏重复</label>
+      <label class="small" style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="hidesys"> ${t('skills_hidesys')}</label>
+      <label class="small" style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="hidedup"> ${t('skills_hidedup')}</label>
       <span class="muted small" id="cnt"></span>
     </div>
     <div id="tblbox"><div class="loading">加载中…</div></div>`;
@@ -249,9 +332,9 @@ async function pageSkills() {
       } catch (e) {}
       list = list.filter(s => !dupNames.has(s.name));
     }
-    document.getElementById('cnt').textContent = `${list.length} 个 skill`;
+    document.getElementById('cnt').textContent = `${list.length} ${t('skills_count')}`;
     document.getElementById('tblbox').innerHTML = `
-      <table class="tbl"><thead><tr><th>名称</th><th>描述</th><th>机器</th><th>版本</th><th>更新时间</th><th>哈希</th></tr></thead><tbody>
+      <table class="tbl"><thead><tr><th>${t('skills_col_name')}</th><th>${t('skills_col_desc')}</th><th>${t('skills_col_machine')}</th><th>${t('skills_col_version')}</th><th>${t('skills_col_updated')}</th><th>${t('skills_col_hash')}</th></tr></thead><tbody>
       ${list.map(s => {
         const fam = families.find(f => f.names.includes(s.name));
         return `<tr>
@@ -289,28 +372,28 @@ async function pageSkillDetail(rest) {
       <div class="k">当前树哈希</div><div class="mono">${esc(s.tree_hash)}</div>
       <div class="k">版本数</div><div>${s.version_count}</div>
       <div class="k">收录 / 更新</div><div>${esc(fmtTime(s.created_at))} → ${esc(fmtTime(s.updated_at))}</div>
-      <div class="k">系统 skill</div><div><span id="sysmark" class="badge ${s.is_system ? 'b-push' : 'b-open'}">${s.is_system ? '是' : '否'}</span>
-        <button style="margin-left:8px" onclick="window._toggleSys(${s.id}, ${s.is_system ? 'false' : 'true'})">${s.is_system ? '取消系统标记' : '标记为系统 skill'}</button></div>
+      <div class="k">${t('detail_issystem')}</div><div><span id="sysmark" class="badge ${s.is_system ? 'b-push' : 'b-open'}">${s.is_system ? (LANG==='zh'?'是':'Yes') : (LANG==='zh'?'否':'No')}</span>
+        <button style="margin-left:8px" onclick="window._toggleSys(${s.id}, ${s.is_system ? 'false' : 'true'})">${s.is_system ? t('detail_unmark') : t('detail_marksys')}</button></div>
     </div>
 
-    <h2>版本时间线（演变路线）</h2>
+    <h2>${t('detail_versions')}</h2>
     <div class="panel">
       <ul class="timeline" id="vline"></ul>
       <div class="toolbar" style="margin-top:12px">
         <select id="dfrom"></select><span class="muted">→</span><select id="dto"></select>
-        <button class="primary" id="dobtn">查看 SKILL.md Diff</button>
+        <button class="primary" id="dobtn">${t('detail_vdiff')}</button>
       </div>
       <div id="diffbox"></div>
     </div>
 
-    <h2>文件浏览（可选历史版本）</h2>
+    <h2>${t('detail_files')}</h2>
     <div class="panel" id="filebox"><div class="loading">加载中…</div></div>
 
-    <h2>关联关系</h2>
+    <h2>${t('detail_edges')}</h2>
     <div class="panel">
-      <b>出边（本 skill 指向）</b>
+      <b>${t('detail_outedges')}</b>
       <div class="edge-list">${edgeHTML(d.edges_out, '引用 →') || '<span class="muted small">无</span>'}</div>
-      <b>入边（指向本 skill）</b>
+      <b>${t('detail_inedges')}</b>
       <div class="edge-list">${edgeHTML(d.edges_in, '→ 引用') || '<span class="muted small">无</span>'}</div>
       <span class="muted small">边类型：<span class="badge b-reference">reference 引用</span> <span class="badge b-related">related 相关</span> <span class="badge b-chain">chain 调用链</span>（关系图页「更新关系」可重扫）</span>
     </div>
@@ -351,9 +434,9 @@ async function pageSkillDetail(rest) {
         <select id="vsel">${d.versions.map(v => `<option value="${v.id}"${v.id === s.latest_version_id ? ' selected' : ''}>v${v.id} · ${fmtTime(v.created_at)} · ${v.kind === 'merged' ? '合并' : '推送'}</option>`).join('')}</select>
         <select id="fpick"></select>
         <span class="muted small" id="fmeta"></span>
-        <button onclick="window._dlVersion()">下载此版本 tar.gz</button>
+        <button onclick="window._dlVersion()">${t('detail_downtar')}</button>
       </div>
-      <pre class="code" id="fview">选择文件查看内容</pre>`;
+      <pre class="code" id="fview">${t('detail_pickfile')}</pre>`;
     const loadTree = async () => {
       const vid = document.getElementById('vsel').value;
       curTree = await api(`/skills/${id}/tree?version=${vid}`);
@@ -425,10 +508,10 @@ async function pageGraph() {
   const nameFam = {};
   families.forEach(f => { const c = famColorMap[f.kind + ':' + f.key]; f.names.forEach(n => nameFam[n] = c); });
   $app.innerHTML = `
-    <h1>关系图</h1>
+    <div class="page-head"><h1>${t('graph_title')}</h1></div>
     <div class="toolbar">
       <button class="primary" id="rescan">更新关系（引用边 + GLM 关系/家族重构，固化）</button>
-      <label class="small" style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="ghidesys"> 隐藏系统 skill</label>
+      <label class="small" style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="ghidesys"> ${t('graph_hidesys')}</label>
       <span class="muted small" id="gstat"></span>
     </div>
     <div class="legend">
@@ -549,7 +632,7 @@ async function pageDevices() {
     uniqueSkills.push(s);
   }
   $app.innerHTML = `
-    <h1>设备管理</h1>
+    <div class="page-head"><h1>${t('devices_title')}</h1></div>
     <div class="panel" style="border-left:4px solid var(--accent)">
       <b class="small">说明</b>
       <p class="small muted" style="margin:6px 0">
@@ -559,7 +642,7 @@ async function pageDevices() {
       </p>
     </div>
     <div id="devlist"><div class="loading">加载中…</div></div>
-    <h2>下发指令历史（最近 50 条）</h2>
+    <h2>${t('devices_history')}</h2>
     <table class="tbl"><thead><tr><th>#</th><th>设备</th><th>动作</th><th>状态</th><th>结果</th><th>创建</th><th>完成</th></tr></thead>
     <tbody>
     ${(dispatches || []).map(d => `<tr>
@@ -576,15 +659,15 @@ async function pageDevices() {
     <div class="panel" data-host="${esc(m.hostname)}">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <b>${esc(m.hostname)}</b>
-        <span class="badge ${m.online ? 'b-push' : 'b-exact'}">${m.online ? '● 在线' : '○ 离线'}</span>
+        <span class="badge ${m.online ? 'b-push' : 'b-exact'}">${m.online ? t('dash_online') : t('dash_offline')}</span>
         <span class="muted small">最后活跃 ${esc(fmtTime(m.last_seen))} · ${m.skill_count} 个 skill · ${m.push_count} 次推送</span>
         <span style="flex:1"></span>
-        <button class="primary" onclick="window._dispatch('${esc(m.hostname)}','sync')">⬇ 下发部署（同步+部署分配 skill）</button>
-        <button onclick="window._dispatch('${esc(m.hostname)}','pull')">仅部署分配 skill</button>
-        <button onclick="window._editAssign('${esc(m.hostname)}')">分配 skill…</button>
+        <button class="primary" onclick="window._dispatch('${esc(m.hostname)}','sync')">${t('devices_dispatch')}</button>
+        <button onclick="window._dispatch('${esc(m.hostname)}','pull')">${t('devices_pull')}</button>
+        <button onclick="window._editAssign('${esc(m.hostname)}')">${t('devices_assign')}</button>
       </div>
       <div class="assign-zone" id="az-${esc(m.hostname)}"></div>
-    </div>`).join('') || '<div class="panel muted">尚无设备接入。新机器接入命令见「设置」页。</div>';
+    </div>`).join('') || `<div class="panel muted">${t('dash_no_machines')}${LANG === 'zh' ? '。新机器接入命令见「设置」页。' : ' — see Settings for onboarding commands.'}</div>`;
 
   window._dispatch = async (host, action) => {
     try {
@@ -611,7 +694,7 @@ async function pageDevices() {
             <span class="muted">${esc((s.description || '').slice(0, 60))}</span></label>`).join('') || '<span class="muted">hub 上无 skill</span>'}
         </div>
         <div class="toolbar">
-          <button class="primary" onclick="window._saveAssign('${esc(host)}')">保存分配</button>
+          <button class="primary" onclick="window._saveAssign('${esc(host)}')">${t('devices_save')}</button>
           <span class="muted small" id="asgmsg-${esc(host)}"></span>
         </div>
       </div>`;
@@ -634,9 +717,9 @@ async function pageDedup() {
   const open = groups.filter(g => g.status === 'open');
   const done = groups.filter(g => g.status !== 'open');
   $app.innerHTML = `
-    <h1>去重与合并工作台</h1>
+    <div class="page-head"><h1>${t('dedup_title')}</h1></div>
     <div class="toolbar">
-      <button class="primary" id="scanbtn">执行去重扫描</button>
+      <button class="primary" id="scanbtn">${t('dedup_scan')}</button>
       <span class="muted small">精确哈希分组 + 名称/描述相似度预筛（GLM 配置后自动逐对判定）</span>
     </div>
     <div id="dupbox"></div>`;
@@ -662,8 +745,8 @@ async function pageDedup() {
         </tbody></table>
         ${g.status === 'open' ? `
         <div class="toolbar" style="margin-top:10px">
-          <button class="primary" onclick="window._mergeProp(${g.id})">GLM 生成合并建议</button>
-          <button onclick="window._dismiss(${g.id})">忽略此组</button>
+          <button class="primary" onclick="window._mergeProp(${g.id})">${t('dedup_propose')}</button>
+          <button onclick="window._dismiss(${g.id})">${t('dedup_ignore')}</button>
         </div>
         <div id="mp-${g.id}"></div>` : ''}
       </div>`).join('');
@@ -700,7 +783,7 @@ async function pageDedup() {
             <div><b class="small">与组内首个成员对比</b><div id="mdiff-${gid}" class="loading">计算 diff…</div></div>
           </div>
           <div class="toolbar" style="margin-top:12px">
-            <button class="primary" onclick="window._adopt(${gid})">采纳（落为新版本，打 merged 标记）</button>
+            <button class="primary" onclick="window._adopt(${gid})">${t('dedup_adopt')}</button>
             <button onclick="document.getElementById('mp-${gid}').innerHTML=''">取消</button>
           </div>
         </div>`;
@@ -744,94 +827,129 @@ function simpleDiff(a, b, name) {
 
 /* ---------- 设置 ---------- */
 async function pageSettings() {
-  $app.innerHTML = '<div class="loading">加载中…</div>';
+  $app.innerHTML = `<div class="loading">${t('loading')}</div>`;
   const s = await api('/settings');
   const admin = state.me && state.me.role === 'admin';
   $app.innerHTML = `
+    <div class="page-head"><h1>${t('settings_title')}</h1></div>
+    <div class="settings-layout">
+      <nav class="settings-side" id="settingsSide">
+        ${admin ? `<a href="#set-access" class="on" data-sec="access"><span class="ico">🚀</span>${t('settings_onestep')}</a>` : ''}
+        ${admin ? `<a href="#set-token" data-sec="token"><span class="ico">🔑</span>${t('settings_token')}</a>` : ''}
+        <a href="#set-llm" data-sec="llm"><span class="ico">🧠</span>${t('settings_llm')}</a>
+        <a href="#set-pw" data-sec="pw"><span class="ico">🔒</span>${t('settings_changepw')}</a>
+        ${admin ? `<a href="#set-users" data-sec="users"><span class="ico">👥</span>${t('settings_users')}</a>` : ''}
+        ${admin ? `<a href="#set-machine" data-sec="machine"><span class="ico">💻</span>${t('settings_newmachine')}</a>` : ''}
+      </nav>
+      <div class="settings-body">
     ${admin ? `
-    <div class="panel" style="border-left:4px solid var(--accent)">
-      <h2 style="margin-top:0">一键接入（免命令行，推荐）</h2>
+    <div class="panel" id="set-access" style="border-left:4px solid var(--accent)">
+      <h2 style="margin-top:0">${t('settings_onestep')}</h2>
       <div class="toolbar">
-        <button class="primary" onclick="window._dlClient('skillshooter.exe')">⬇ Windows 客户端（双击即用）</button>
-        <button onclick="window._dlClient('skillshooter')">⬇ Linux 客户端</button>
+        <button class="primary" onclick="window._dlClient('skillshooter.exe')">⬇ Windows</button>
+        <button onclick="window._dlClient('skillshooter')">⬇ Linux</button>
         <button onclick="window._dlClient('skillshooter-darwin-arm64')">⬇ macOS (Apple)</button>
         <button onclick="window._dlClient('skillshooter-darwin-amd64')">⬇ macOS (Intel)</button>
       </div>
-      <p class="small muted">下载的二进制<b>已内嵌本 Hub 地址与接入配置</b>：放到任意目录，Windows 直接双击 — 托盘出现蓝色图标（右键：打开 Hub / 立即同步 / 退出），自动全盘推送本机 skill、增量同步、应用云端合并、接收远程调用。Linux/macOS：<code class="inline">chmod +x skillshooter && ./skillshooter</code>。<b>开机自启</b>：Win+R 输入 <code class="inline">shell:startup</code>，给 exe 创建快捷方式放进去。配置同时落在 <code class="inline">~/.skillshooter/config.json</code> 可查看。</p>
-    </div>` : ''}
-    ${admin ? `
-    <div class="panel">
-      <h2 style="margin-top:0">API Token（程序化调用凭据）</h2>
-      <p class="small muted">浏览器已用<b>账号登录</b>，无需 token。token 仅供 API 客户端（push/pull/daemon）使用：管理员 token 可执行一切操作，用户 token 仅同步数据（push/pull/读取），不能下发远程调用、也不会领取执行任务。新 token 只显示一次。</p>
+      <p class="small muted">${LANG === 'zh'
+        ? '下载的二进制<b>已内嵌本 Hub 地址与接入配置</b>：放到任意目录，Windows 直接双击 — 托盘出现图标（右键：打开 Hub / 立即同步 / 配置 / 退出），自动全盘推送本机 skill、增量同步、应用云端合并、接收远程调用。Linux/macOS：<code class="inline">chmod +x skillshooter && ./skillshooter</code>。'
+        : 'The downloaded binary <b>embeds this Hub URL and credentials</b>: drop it anywhere, double-click on Windows — a tray icon appears (right-click: Open Hub / Sync now / Configure / Quit), auto-pushing local skills, incremental sync, applying cloud merges, receiving jobs. Linux/macOS: <code class="inline">chmod +x skillshooter && ./skillshooter</code>.'}</p>
+    </div>
+    <div class="panel" id="set-token">
+      <h2 style="margin-top:0">${t('settings_token')}</h2>
+      <p class="small muted">${LANG === 'zh'
+        ? '浏览器已用<b>账号登录</b>，无需 token。token 仅供 API 客户端（push/pull/daemon）使用：管理员 token 可执行一切操作，用户 token 绑定设备（创建可留空=首次使用自动认领），只能同步本机与分配给本机的 skill，管理视图 403。新 token 只显示一次。'
+        : 'The browser uses <b>account login</b> — no token needed. Tokens are for API clients: the admin token can do everything; user tokens are device-bound (blank on creation = auto-claimed on first use). Admin views return 403 for user tokens. New tokens shown once.'}</p>
       <div class="toolbar">
         <input type="text" readonly value="${esc(s.token || '')}" style="min-width:420px;font-family:var(--mono)" id="tokinput">
-        <button onclick="navigator.clipboard.writeText(document.getElementById('tokinput').value).then(()=>toast('已复制'))">复制主 token</button>
+        <button onclick="navigator.clipboard.writeText(document.getElementById('tokinput').value).then(()=>toast('copied'))">${LANG === 'zh' ? '复制主 token' : 'Copy admin token'}</button>
       </div>
-      <h2>用户 Token 管理</h2>
+      <h2>${t('settings_usertok')}</h2>
       <div class="toolbar">
-        <input type="text" id="newtoknote" placeholder="备注（如：VM1）" style="min-width:140px">
-        <input type="text" id="newtokhost" placeholder="绑定设备名（留空=客户端首次使用自动认领）" style="min-width:240px">
-        <button class="primary" id="mkuser">创建用户 token</button>
+        <input type="text" id="newtoknote" placeholder="${LANG === 'zh' ? '备注（如：VM1）' : 'Note (e.g. VM1)'}" style="min-width:140px">
+        <input type="text" id="newtokhost" placeholder="${LANG === 'zh' ? '绑定设备名（留空=首次使用自动认领）' : 'Device name (blank = auto-claim)'}" style="min-width:240px">
+        <button class="primary" id="mkuser">${t('settings_mkuser')}</button>
         <span id="newtokout" class="mono small"></span>
       </div>
-      <table class="tbl" id="toktbl"><thead><tr><th>Token</th><th>角色</th><th>备注</th><th>绑定设备</th><th>创建时间</th><th></th></tr></thead><tbody></tbody></table>
+      <table class="tbl" id="toktbl"><thead><tr><th>Token</th><th>Role</th><th>Note</th><th>${LANG === 'zh' ? '绑定设备' : 'Device'}</th><th>Created</th><th></th></tr></thead><tbody></tbody></table>
     </div>` : ''}
-    <div class="panel">
-      <h2 style="margin-top:0">LLM 接入（自定义模型）</h2>
-      <p class="small muted">任何 OpenAI 兼容端点均可（GLM/DeepSeek/OpenAI/OpenRouter/本地 vLLM 等）；base_url 含 <code class="inline">/anthropic</code> 时自动走 Anthropic messages 协议。key 留空表示不修改。优先级：环境变量 &gt; 此处保存 &gt; config.yaml。未配置时去重判定/合并建议/关系分析降级不可用。</p>
+    <div class="panel" id="set-llm">
+      <h2 style="margin-top:0">${t('settings_llm')}</h2>
+      <p class="small muted">${LANG === 'zh'
+        ? '任何 OpenAI 兼容端点均可（GLM/DeepSeek/OpenAI/OpenRouter/本地 vLLM 等）；base_url 含 <code class="inline">/anthropic</code> 时自动走 Anthropic messages 协议。key 留空表示不修改。优先级：环境变量 &gt; 此处保存 &gt; config.yaml。'
+        : 'Any OpenAI-compatible endpoint works (GLM/DeepSeek/OpenAI/OpenRouter/local vLLM…); a base_url containing <code class="inline">/anthropic</code> switches to the Anthropic messages protocol. Leave key blank to keep the current one. Priority: env &gt; saved here &gt; config.yaml.'}</p>
       <div class="kv">
-        <div class="k">状态</div><div>${s.llm.enabled ? '<span class="badge b-push">已配置</span>' : '<span class="badge b-exact">未配置</span>'}</div>
+        <div class="k">${LANG === 'zh' ? '状态' : 'Status'}</div><div>${s.llm.enabled ? `<span class="badge b-push">${LANG === 'zh' ? '已配置' : 'Configured'}</span>` : `<span class="badge b-exact">${LANG === 'zh' ? '未配置' : 'Not configured'}</span>`}</div>
       </div>
       ${admin ? `
       <div class="toolbar" style="flex-wrap:wrap;gap:8px;margin-top:10px">
-        <input type="text" id="llmkey" placeholder="API Key（${esc(s.llm.key_masked || '未设置')}，留空不改）" style="min-width:300px;font-family:var(--mono)">
-        <input type="text" id="llmbase" placeholder="Base URL，如 https://api.openai.com/v1" value="${esc(s.llm.base_url || '')}" style="min-width:300px;font-family:var(--mono)">
-        <input type="text" id="llmmodel" placeholder="模型名，如 glm-4.7 / gpt-4o-mini" value="${esc(s.llm.model || '')}" style="min-width:220px;font-family:var(--mono)">
-        <button class="primary" id="llmsave">保存</button>
-        <button id="llmtestbtn" ${s.llm.enabled ? '' : 'disabled'}>测试连通性</button>
+        <input type="text" id="llmkey" placeholder="API Key（${esc(s.llm.key_masked || (LANG === 'zh' ? '未设置' : 'not set'))}，${LANG === 'zh' ? '留空不改' : 'blank = keep'}）" style="min-width:300px;font-family:var(--mono)">
+        <input type="text" id="llmbase" placeholder="Base URL" value="${esc(s.llm.base_url || '')}" style="min-width:300px;font-family:var(--mono)">
+        <input type="text" id="llmmodel" placeholder="Model" value="${esc(s.llm.model || '')}" style="min-width:220px;font-family:var(--mono)">
+        <button class="primary" id="llmsave">${LANG === 'zh' ? '保存' : 'Save'}</button>
+        <button id="llmtestbtn" ${s.llm.enabled ? '' : 'disabled'}>${LANG === 'zh' ? '测试连通性' : 'Test'}</button>
         <span id="llmres" class="small"></span>
       </div>` : `
-      <div class="kv"><div class="k">Base URL</div><div class="mono">${esc(s.llm.base_url)}</div><div class="k">模型</div><div class="mono">${esc(s.llm.model)}</div></div>`}
+      <div class="kv"><div class="k">Base URL</div><div class="mono">${esc(s.llm.base_url)}</div><div class="k">Model</div><div class="mono">${esc(s.llm.model)}</div></div>`}
     </div>
-    <div class="panel">
-      <h2 style="margin-top:0">修改我的密码</h2>
+    <div class="panel" id="set-pw">
+      <h2 style="margin-top:0">${t('settings_changepw')}</h2>
       <div class="toolbar" style="flex-wrap:wrap;gap:8px">
-        <input type="password" id="pwold" placeholder="旧密码" style="min-width:180px">
-        <input type="password" id="pwnew" placeholder="新密码（至少 6 位）" style="min-width:180px">
-        <button class="primary" id="pwbtn">修改密码</button>
+        <input type="password" id="pwold" placeholder="${LANG === 'zh' ? '旧密码' : 'Old password'}" style="min-width:180px">
+        <input type="password" id="pwnew" placeholder="${LANG === 'zh' ? '新密码（至少 6 位）' : 'New password (min 6 chars)'}" style="min-width:180px">
+        <button class="primary" id="pwbtn">${LANG === 'zh' ? '修改密码' : 'Change'}</button>
         <span id="pwmsg" class="small"></span>
       </div>
     </div>
     ${admin ? `
-    <div class="panel">
-      <h2 style="margin-top:0">用户账号管理</h2>
-      <p class="small muted">web 后台登录账号（与 API token 相互独立）。admin 角色可管理一切，user 角色只读 + 同步视角。</p>
+    <div class="panel" id="set-users">
+      <h2 style="margin-top:0">${t('settings_users')}</h2>
+      <p class="small muted">${LANG === 'zh' ? 'web 后台登录账号（与 API token 相互独立）。admin 角色可管理一切，user 角色只读。' : 'Web console accounts (independent of API tokens). admin manages everything; user is read-only.'}</p>
       <div class="toolbar" style="flex-wrap:wrap;gap:8px">
-        <input type="text" id="unew" placeholder="用户名" style="min-width:140px">
-        <input type="password" id="upass" placeholder="密码（≥6 位）" style="min-width:140px">
+        <input type="text" id="unew" placeholder="${LANG === 'zh' ? '用户名' : 'Username'}" style="min-width:140px">
+        <input type="password" id="upass" placeholder="${LANG === 'zh' ? '密码（≥6 位）' : 'Password (≥6)'}" style="min-width:140px">
         <select id="urole"><option value="user">user</option><option value="admin">admin</option></select>
-        <button class="primary" id="ucreate">创建用户</button>
+        <button class="primary" id="ucreate">${LANG === 'zh' ? '创建' : 'Create'}</button>
       </div>
-      <table class="tbl" id="usertbl"><thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>创建时间</th><th></th></tr></thead><tbody></tbody></table>
+      <table class="tbl" id="usertbl"><thead><tr><th>ID</th><th>${LANG === 'zh' ? '用户名' : 'Username'}</th><th>Role</th><th>${LANG === 'zh' ? '创建时间' : 'Created'}</th><th></th></tr></thead><tbody></tbody></table>
     </div>` : ''}
     ${admin ? `
-    <div class="panel">
-      <h2 style="margin-top:0">新机器接入（复制即用）</h2>
+    <div class="panel" id="set-machine">
+      <h2 style="margin-top:0">${t('settings_newmachine')}</h2>
       <div class="toolbar">
-        <span class="small muted">机器名（留空=自动取主机名）</span>
-        <input type="text" id="bsHost" placeholder="如 my-laptop" style="min-width:200px">
+        <span class="small muted">${LANG === 'zh' ? '机器名（留空=自动取主机名）' : 'Machine name (blank = hostname)'}</span>
+        <input type="text" id="bsHost" placeholder="e.g. my-laptop" style="min-width:200px">
       </div>
-      <p class="small muted">在目标机器终端粘贴执行即可：自动下载二进制到 <code class="inline">~/.skillshooter/</code>，<b>全盘收集</b>本机所有 agent 工具的 skill（.agents / .claude / .zcode 插件缓存等，存在的才推）并上传。重复执行安全（幂等）。</p>
-      <b class="small">Linux / macOS / Windows Git Bash（一条命令）</b>
-      <div class="toolbar"><input type="text" readonly id="cmdUnix" class="mono" style="min-width:620px"><button onclick="window._copyCmd('cmdUnix')">复制</button></div>
+      <p class="small muted">${LANG === 'zh' ? '在目标机器终端粘贴执行：自动下载二进制到 ~/.skillshooter/，全盘收集本机 agent 工具的 skill 并上传。幂等可重复。' : 'Paste into the target terminal: downloads the binary to ~/.skillshooter/ and pushes all discovered skills. Idempotent.'}</p>
+      <b class="small">Linux / macOS / Windows Git Bash</b>
+      <div class="toolbar"><input type="text" readonly id="cmdUnix" class="mono" style="min-width:620px"><button onclick="window._copyCmd('cmdUnix')">${LANG === 'zh' ? '复制' : 'Copy'}</button></div>
       <b class="small">Windows（PowerShell）</b>
-      <div class="toolbar"><input type="text" readonly id="cmdWin" class="mono" style="min-width:620px"><button onclick="window._copyCmd('cmdWin')">复制</button></div>
-      <b class="small">反向分发（任意已接入机器，把 hub 合并成果拉回本地）</b>
-      <div class="toolbar"><input type="text" readonly id="cmdPull" class="mono" style="min-width:620px"><button onclick="window._copyCmd('cmdPull')">复制</button></div>
-      <b class="small">本机常驻客户端（增量监控推送 + 自动应用云端合并 + 接收远程调用）</b>
-      <div class="toolbar"><input type="text" readonly id="cmdDaemon" class="mono" style="min-width:620px"><button onclick="window._copyCmd('cmdDaemon')">复制</button></div>
-    </div>` : ''}`;
+      <div class="toolbar"><input type="text" readonly id="cmdWin" class="mono" style="min-width:620px"><button onclick="window._copyCmd('cmdWin')">${LANG === 'zh' ? '复制' : 'Copy'}</button></div>
+      <b class="small">${LANG === 'zh' ? '反向分发（拉回合并成果）' : 'Pull merged results back'}</b>
+      <div class="toolbar"><input type="text" readonly id="cmdPull" class="mono" style="min-width:620px"><button onclick="window._copyCmd('cmdPull')">${LANG === 'zh' ? '复制' : 'Copy'}</button></div>
+      <b class="small">${LANG === 'zh' ? '常驻客户端（增量推送+应用合并+远程调用）' : 'Resident daemon'}</b>
+      <div class="toolbar"><input type="text" readonly id="cmdDaemon" class="mono" style="min-width:620px"><button onclick="window._copyCmd('cmdDaemon')">${LANG === 'zh' ? '复制' : 'Copy'}</button></div>
+    </div>` : ''}
+      </div><!-- /settings-body -->
+    </div><!-- /settings-layout -->`;
 
+  // 侧边栏：点击平滑滚动 + 滚动高亮
+  const side = document.getElementById('settingsSide');
+  if (side) {
+    const secs = [...document.querySelectorAll('.settings-body .panel[id]')];
+    side.querySelectorAll('a').forEach(a => a.onclick = ev => {
+      ev.preventDefault();
+      const el = document.getElementById('set-' + a.dataset.sec);
+      if (el) el.scrollIntoView({behavior: 'smooth'});
+    });
+    const pick = () => {
+      let cur = secs[0];
+      for (const pn of secs) if (pn.getBoundingClientRect().top < 110) cur = pn;
+      side.querySelectorAll('a').forEach(a => a.classList.toggle('on', a.dataset.sec === (cur && cur.id || '').replace('set-', '')));
+    };
+    window.addEventListener('scroll', pick, {passive: true});
+    setTimeout(pick, 50);
+  }
   if (admin) {
     const loadTokens = async () => {
       try {
@@ -842,11 +960,11 @@ async function pageSettings() {
           <td class="mono small">${esc(t.token_masked)}</td>
           <td><span class="badge ${t.role === 'admin' ? 'b-merged' : 'b-machine'}">${esc(t.role)}</span></td>
           <td>${esc(t.note || '')}</td>
-          <td>${t.hostname ? `<span class="badge b-machine">${esc(t.hostname)}</span>` : '<span class="muted small">待认领</span>'}</td>
+          <td>${t.hostname ? `<span class="badge b-machine">${esc(t.hostname)}</span>` : `<span class="muted small">${LANG === 'zh' ? '待认领' : 'unclaimed'}</span>`}</td>
           <td class="muted small">${esc(fmtTime(t.created_at))}</td>
-          <td><button onclick="window._rebindTok('${esc(t.token_masked)}', '${esc(t.hostname || '')}')">改绑</button>
-              <button onclick="window._revokeTok('${esc(t.token_masked)}')">吊销</button></td>
-        </tr>`).join('') || '<tr><td colspan="6" class="muted small">暂无角色 token（现有各客户端用主 token）</td></tr>';
+          <td><button onclick="window._rebindTok('${esc(t.token_masked)}', '${esc(t.hostname || '')}')">${LANG === 'zh' ? '改绑' : 'Rebind'}</button>
+              <button onclick="window._revokeTok('${esc(t.token_masked)}')">${LANG === 'zh' ? '吊销' : 'Revoke'}</button></td>
+        </tr>`).join('') || `<tr><td colspan="6" class="muted small">${LANG === 'zh' ? '暂无角色 token（现有各客户端用主 token）' : 'No role tokens yet'}</td></tr>`;
       } catch (e) {}
     };
     loadTokens();
@@ -876,11 +994,13 @@ async function pageSettings() {
         const us = await api('/users');
         const tb = document.querySelector('#usertbl tbody');
         if (!tb) return;
-        tb.innerHTML = us.map(u => '<tr><td>' + u.id + '</td><td><b>' + esc(u.username) + '</b></td>' +
-          '<td><span class="badge ' + (u.role === 'admin' ? 'b-merged' : 'b-machine') + '">' + esc(u.role) + '</span></td>' +
-          '<td class="muted small">' + esc(fmtTime(u.created_at)) + '</td>' +
-          '<td><button onclick="window._delUser(' + u.id + ', \'' + esc(u.username) + '\')">删除</button>' +
-          '<button onclick="window._resetPw(' + u.id + ', \'' + esc(u.username) + '\')">重置密码</button></td></tr>').join('');
+        const DEL = LANG === 'zh' ? '删除' : 'Delete';
+        const RST = LANG === 'zh' ? '重置密码' : 'Reset pw';
+        tb.innerHTML = us.map(u => `<tr><td>${u.id}</td><td><b>${esc(u.username)}</b></td>
+          <td><span class="badge ${u.role === 'admin' ? 'b-merged' : 'b-machine'}">${esc(u.role)}</span></td>
+          <td class="muted small">${esc(fmtTime(u.created_at))}</td>
+          <td><button onclick="window._delUser(${u.id}, '${esc(u.username)}')">${DEL}</button>
+              <button onclick="window._resetPw(${u.id}, '${esc(u.username)}')">${RST}</button></td></tr>`).join('');
       } catch (e) {}
     };
     loadUsers();
@@ -979,7 +1099,7 @@ async function pageJobs() {
   const [machines, skills, jobs] = await Promise.all([api('/machines'), api('/skills'), api('/jobs')]);
   const skillNames = [...new Set(skills.map(s => s.name))];
   $app.innerHTML = `
-    <h1>远程调用</h1>
+    <div class="page-head"><h1>${t('jobs_title')}</h1></div>
     <div class="panel">
       <h2 style="margin-top:0">下发任务（目标机器需运行常驻客户端，见设置页）</h2>
       <div class="toolbar">
@@ -993,7 +1113,7 @@ async function pageJobs() {
         <span class="small muted" id="jmsg"></span>
       </div>
     </div>
-    <h2>任务列表</h2>
+    <h2>${t('jobs_list')}</h2>
     <table class="tbl"><thead><tr><th>#</th><th>机器</th><th>skill</th><th>状态</th><th>CLI</th><th>创建</th><th>完成</th></tr></thead>
     <tbody id="jbody">${renderJobRows(jobs)}</tbody></table>
     <div id="jdetail"></div>`;

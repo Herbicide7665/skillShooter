@@ -9,16 +9,17 @@
 </head>
 <body>
 <nav class="topnav">
-  <div class="brand">⭐ SkillShooter</div>
+  <div class="brand"><span class="star">🎯</span>SkillShooter</div>
   <div class="navlinks" id="navlinks">
-    <a href="#/dashboard" data-r="dashboard">总览</a>
+    <a href="#/dashboard" data-r="dashboard" data-i18n="nav_dashboard">总览</a>
     <a href="#/skills" data-r="skills">Skills</a>
-    <a href="#/graph" data-r="graph">关系图</a>
-    <a href="#/dedup" data-r="dedup">去重合并</a>
-    <a href="#/devices" data-r="devices">设备</a>
-    <a href="#/jobs" data-r="jobs">远程调用</a>
-    <a href="#/settings" data-r="settings">设置</a>
+    <a href="#/graph" data-r="graph" data-i18n="nav_graph">关系图</a>
+    <a href="#/dedup" data-r="dedup" data-i18n="nav_dedup">去重合并</a>
+    <a href="#/devices" data-r="devices" data-i18n="nav_devices">设备</a>
+    <a href="#/jobs" data-r="jobs" data-i18n="nav_jobs">远程调用</a>
+    <a href="#/settings" data-r="settings" data-i18n="nav_settings">设置</a>
   </div>
+  <button class="lang-switch" id="langBtn" onclick="toggleLang()">EN</button>
   <div id="userbox" style="margin-left:auto;display:flex;align-items:center"></div>
 </nav>
 <main id="app"><div class="loading">加载中…</div></main>
