@@ -1,4 +1,4 @@
-module skillrelay
+module skillshooter
 
 go 1.21
 

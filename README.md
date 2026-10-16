@@ -1,6 +1,6 @@
-# Skill Relay — 跨机 Agent Skill 管理平台
+# SkillShooter — 跨机 Agent Skill 管理平台
 
-> **2026-10-16 更名**：本项目原名 skill-hub，因 GitHub 同名项目冲突更名为 **Skill Relay**（二进制 `skillrelay`，数据目录 `~/.skillrelay`，数据库 `skillmanager.db`）。旧 token、旧数据库自动兼容。
+> **2026-10-16 更名**：本项目原名 skill-hub，因 GitHub 同名项目冲突更名为 **SkillShooter**（二进制 `skillshooter`，数据目录 `~/.skillshooter`，数据库 `skillmanager.db`）。旧 token、旧数据库自动兼容。
 
 一个单二进制、零依赖的自托管 web 平台，用于集中管理散落在多台机器、多个 agent 工具（ZCode / Claude Code 等）里的 skill（每个 skill = 一个含 `SKILL.md` 的目录）。
 
@@ -21,9 +21,9 @@
 - **新机器接入 = 打开 hub 设置页，复制一条命令到目标机器终端执行**（token 已注入命令）：
   - Linux / macOS / Git Bash：`curl -fsSL http://your-server:8790/agent.sh | sh -s -- --server ... --token ...`
   - Windows PowerShell：`iwr agent.ps1` 引导脚本
-  - 脚本自动：下载二进制到 `~/.skillrelay/` → 全盘发现本机 skill 目录（.agents/.claude/.zcode 插件缓存）→ 逐一推送。重复执行安全
+  - 脚本自动：下载二进制到 `~/.skillshooter/` → 全盘发现本机 skill 目录（.agents/.claude/.zcode 插件缓存）→ 逐一推送。重复执行安全
 - **常驻客户端**（推荐每台机器都跑）：设置页复制 daemon 命令执行即可——增量监控推送（30s）+ 自动应用云端合并（5min，源变体门控防覆盖手工修改）+ 接收远程 skill 调用
-- 手动分发：`skillrelay pull --server ... --token ... --dest ~/.agents/skills`
+- 手动分发：`skillshooter pull --server ... --token ... --dest ~/.agents/skills`
 - **远程调用**：UI「远程调用」页选机器+skill+提示词下发；目标机器 daemon 拉起 claude/zcode -p 执行并回传 asdste100 报告
 - 采集范围：仅 SKILL.md 核心文档（二进制客户端同理）；本机脚本与数据产物永不入库
 
@@ -32,8 +32,8 @@
 ### 服务端（一次）
 
 ```bash
-skillrelay.exe serve                # 默认 0.0.0.0:8790，数据/配置在二进制同目录
-# 可选: skillrelay.exe serve --addr 0.0.0.0:9000 --db D:/data/skillmanager.db
+skillshooter.exe serve                # 默认 0.0.0.0:8790，数据/配置在二进制同目录
+# 可选: skillshooter.exe serve --addr 0.0.0.0:9000 --db D:/data/skillmanager.db
 ```
 
 打开 `http://127.0.0.1:8790` → 设置页复制**接入 Token**。
@@ -41,11 +41,11 @@ skillrelay.exe serve                # 默认 0.0.0.0:8790，数据/配置在二�
 ### 其他机器接入（三步）
 
 ```bash
-# 1. 复制 skillrelay.exe 到目标机器（无任何运行时依赖）
+# 1. 复制 skillshooter.exe 到目标机器（无任何运行时依赖）
 # 2. 在设置页拿 token（X-Token）
 # 3. 扫描推送（可多次、可多目录；--hostname 自定义来源标记）
-skillrelay push --server http://SERVER_IP:8790 --token TOKEN --path ~/.agents/skills --hostname my-laptop
-skillrelay push --server http://SERVER_IP:8790 --token TOKEN --path ~/.zcode/cli/plugins/cache/zcode-plugins-official
+skillshooter push --server http://SERVER_IP:8790 --token TOKEN --path ~/.agents/skills --hostname my-laptop
+skillshooter push --server http://SERVER_IP:8790 --token TOKEN --path ~/.zcode/cli/plugins/cache/zcode-plugins-official
 ```
 
 递归扫描目录下**所有深度**含 `SKILL.md` 的子目录（插件缓存的多层嵌套也能处理）。**采集范围 = 仅 SKILL.md 核心文档**：目录内脚本/产物/参考文件不进版本系统（归属本机所有），版本历史即 SKILL.md 演变史 — 体积小、无数据产物噪音。
@@ -114,8 +114,8 @@ POST /api/settings/glm-test             GLM 连通测试
 
 - 全部数据在二进制同目录：`skillmanager.db`（SQLite/WAL，内容寻址 blob 存储）+ `config.yaml`
 - 备份 = 拷走 `skillmanager.db` 一个文件；迁移 = 拷走 db + exe
-- 停止服务：`taskkill //IM skillrelay.exe //F`（Windows）/ `pkill skillrelay`（Linux）
-- 上 VPS 建议：`nohup ./skillrelay serve > serve.log 2>&1 &` + nginx 反代加 TLS；端口放行防火墙即可，无需数据库服务
+- 停止服务：`taskkill //IM skillshooter.exe //F`（Windows）/ `pkill skillshooter`（Linux）
+- 上 VPS 建议：`nohup ./skillshooter serve > serve.log 2>&1 &` + nginx 反代加 TLS；端口放行防火墙即可，无需数据库服务
 
 ## 已知限制
 

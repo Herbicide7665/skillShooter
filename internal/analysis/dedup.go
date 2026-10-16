@@ -9,8 +9,8 @@ import (
 	"strings"
 	"unicode"
 
-	"skillrelay/internal/llm"
-	"skillrelay/internal/store"
+	"skillshooter/internal/llm"
+	"skillshooter/internal/store"
 )
 
 func TrimPercent(s string) string {

@@ -18,11 +18,11 @@ import (
 	"strings"
 	"time"
 
-	"skillrelay/internal/analysis"
-	"skillrelay/internal/daemon"
-	"skillrelay/internal/diffutil"
-	"skillrelay/internal/llm"
-	"skillrelay/internal/store"
+	"skillshooter/internal/analysis"
+	"skillshooter/internal/daemon"
+	"skillshooter/internal/diffutil"
+	"skillshooter/internal/llm"
+	"skillshooter/internal/store"
 )
 
 type Server struct {
@@ -985,8 +985,8 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleFileDL(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(r.URL.Path, "/dl/")
 	if name == "" || strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") ||
-		!strings.HasPrefix(name, "skillrelay") {
-		writeErr(w, 403, "只允许下载 skillrelay 二进制")
+		!strings.HasPrefix(name, "skillshooter") {
+		writeErr(w, 403, "只允许下载 skillshooter 二进制")
 		return
 	}
 	ex, err := os.Executable()
@@ -1134,9 +1134,9 @@ func (s *Server) handleClientDL(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimPrefix(r.URL.Path, "/api/client/")
 	allowed := map[string]bool{
-		"skillrelay.exe": true, "skillrelay": true,
-		"skillrelay-linux-amd64": true, "skillrelay-linux-arm64": true,
-		"skillrelay-darwin-amd64": true, "skillrelay-darwin-arm64": true,
+		"skillshooter.exe": true, "skillshooter": true,
+		"skillshooter-linux-amd64": true, "skillshooter-linux-arm64": true,
+		"skillshooter-darwin-amd64": true, "skillshooter-darwin-arm64": true,
 	}
 	if !allowed[name] {
 		writeErr(w, 403, "非法文件名")

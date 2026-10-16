@@ -1,11 +1,11 @@
-skillrelay.db*
+skillshooter.db*
 config.yaml
 *.log
 .token
-skillrelay.exe
-skillrelay
-skillrelay-linux-*
-skillrelay-darwin-*
+skillshooter.exe
+skillshooter
+skillshooter-linux-*
+skillshooter-darwin-*
 .shots/
 .e2e*
 .reg*

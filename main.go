@@ -16,11 +16,11 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"skillrelay/internal/daemon"
-	"skillrelay/internal/llm"
-	"skillrelay/internal/pusher"
-	"skillrelay/internal/server"
-	"skillrelay/internal/store")
+	"skillshooter/internal/daemon"
+	"skillshooter/internal/llm"
+	"skillshooter/internal/pusher"
+	"skillshooter/internal/server"
+	"skillshooter/internal/store")
 
 // Config config.yaml
 type Config struct {
@@ -37,8 +37,8 @@ func exeDir() string {
 
 func loadConfig() Config {
 	var cfg Config
-	cfg.LLM.BaseURL = os.Getenv("SKILLRELAY_LLM_BASE_URL")
-	cfg.LLM.Model = os.Getenv("SKILLRELAY_LLM_MODEL")
+	cfg.LLM.BaseURL = os.Getenv("SKILLSHOOTER_LLM_BASE_URL")
+	cfg.LLM.Model = os.Getenv("SKILLSHOOTER_LLM_MODEL")
 	// env 优先；兼容旧命名 GLM_API_KEY / ZHIPUAI_API_KEY
 	if k := os.Getenv("LLM_API_KEY"); k != "" {
 		cfg.LLM.APIKey = k
@@ -48,10 +48,10 @@ func loadConfig() Config {
 		cfg.LLM.APIKey = k
 	}
 	if cfg.LLM.BaseURL == "" {
-		cfg.LLM.BaseURL = os.Getenv("SKILLRELAY_GLM_BASE_URL")
+		cfg.LLM.BaseURL = os.Getenv("SKILLSHOOTER_GLM_BASE_URL")
 	}
 	if cfg.LLM.Model == "" {
-		cfg.LLM.Model = os.Getenv("SKILLRELAY_GLM_MODEL")
+		cfg.LLM.Model = os.Getenv("SKILLSHOOTER_GLM_MODEL")
 	}
 	// config.yaml 与二进制同目录（新键 llm_*；兼容旧 glm_* 键）
 	path := filepath.Join(exeDir(), "config.yaml")
@@ -135,19 +135,19 @@ func main() {
 }
 
 func usage() {
-	fmt.Print(`skillrelay — 跨机 Agent Skill 管理平台
+	fmt.Print(`skillshooter — 跨机 Agent Skill 管理平台
 
 用法:
-  skillrelay serve  [--addr 0.0.0.0:8790] [--db skillrelay.db]
+  skillshooter serve  [--addr 0.0.0.0:8790] [--db skillshooter.db]
       启动 web 服务（数据与 config.yaml 就在二进制同目录；启动日志含接入 token）
-  skillrelay push --server URL --token TOKEN --path <目录> [--hostname 名字]
+  skillshooter push --server URL --token TOKEN --path <目录> [--hostname 名字]
       递归扫描目录下所有含 SKILL.md 的子目录并上传
-  skillrelay pull --server URL --token TOKEN --dest <目录> [--machine 名字] [--overwrite] [--assigned]
+  skillshooter pull --server URL --token TOKEN --dest <目录> [--machine 名字] [--overwrite] [--assigned]
       把 hub 上全部（或某机器的）skill 最新版本拉回本地（合并成果分发）
       --assigned: 只拉"分配给本机"的 skill 集合（--machine 填本机名，落盘 --dest）
-  skillrelay upload --server URL --token TOKEN --path <目录> [--hostname 名字]
+  skillshooter upload --server URL --token TOKEN --path <目录> [--hostname 名字]
       上传本地 skill 到后台（等价 push，语义化别名）
-  skillrelay daemon --server URL --token TOKEN [--hostname 名字] [选项]
+  skillshooter daemon --server URL --token TOKEN [--hostname 名字] [选项]
       常驻客户端：增量监控本机 agent 目录推送 + 应用云端合并结果 + 部署分配 skill + 心跳探活 + 接收远程 skill 调用
       选项: --interval 30  --apply-interval 300  --job-poll 5  --heartbeat 1800  --roots 路径1,路径2
             --no-watch / --no-apply / --no-jobs / --no-heartbeat
@@ -157,12 +157,12 @@ func usage() {
 func cmdServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	addr := fs.String("addr", "0.0.0.0:8790", "监听地址")
-	dbPath := fs.String("db", "", "SQLite 路径（默认二进制同目录 skillrelay.db）")
+	dbPath := fs.String("db", "", "SQLite 路径（默认二进制同目录 skillshooter.db）")
 	fs.Parse(args)
 
 	dir := exeDir()
 	if *dbPath == "" {
-		*dbPath = filepath.Join(dir, "skillrelay.db")
+		*dbPath = filepath.Join(dir, "skillshooter.db")
 	}
 	st, err := store.Open(*dbPath)
 	if err != nil {
@@ -174,16 +174,16 @@ func cmdServe(args []string) {
 		fmt.Fprintf(os.Stderr, "生成 token 失败: %v\n", err)
 		os.Exit(1)
 	} else {
-		fmt.Printf("[skillrelay] API token: %s\n", tok)
+		fmt.Printf("[skillshooter] API token: %s\n", tok)
 	}
 	if pw, created, err := st.EnsureUsers(); err != nil {
 		fmt.Fprintf(os.Stderr, "初始化用户失败: %v\n", err)
 		os.Exit(1)
 	} else if created {
 		if pw == "" {
-			pw = os.Getenv("SKILLRELAY_ADMIN_PASSWORD")
+			pw = os.Getenv("SKILLSHOOTER_ADMIN_PASSWORD")
 		}
-		fmt.Printf("[skillrelay] 初始管理员账号: admin  密码: %s （仅此一次打印，请登录后尽快修改）\n", pw)
+		fmt.Printf("[skillshooter] 初始管理员账号: admin  密码: %s （仅此一次打印，请登录后尽快修改）\n", pw)
 	}
 
 	cfg := applyLLMOverrides(loadConfig(), st)
@@ -198,7 +198,7 @@ func cmdServe(args []string) {
 		fmt.Fprintf(os.Stderr, "监听失败: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("[skillrelay] serving http://%s  db=%s  llm=%s(model=%s)\n",
+	fmt.Printf("[skillshooter] serving http://%s  db=%s  llm=%s(model=%s)\n",
 		ln.Addr(), *dbPath, map[bool]string{true: "已配置", false: "未配置"}[cfg.LLM.APIKey != ""], cfg.LLM.Model)
 
 	httpSrv := &http.Server{Handler: mux}
@@ -219,8 +219,8 @@ func cmdServe(args []string) {
 
 func cmdPush(args []string) {
 	fs := flag.NewFlagSet("push", flag.ExitOnError)
-	serverURL := fs.String("server", os.Getenv("SKILLRELAY_SERVER"), "服务地址，如 http://1.2.3.4:8790")
-	token := fs.String("token", os.Getenv("SKILLRELAY_TOKEN"), "接入 token（服务端设置页可见）")
+	serverURL := fs.String("server", os.Getenv("SKILLSHOOTER_SERVER"), "服务地址，如 http://1.2.3.4:8790")
+	token := fs.String("token", os.Getenv("SKILLSHOOTER_TOKEN"), "接入 token（服务端设置页可见）")
 	path := fs.String("path", "", "要扫描的 skill 根目录")
 	hostname := fs.String("hostname", "", "来源机器标记（默认取本机主机名）")
 	maxFileMB := fs.Int("max-file-mb", 10, "单文件上限(MB)，超限跳过（0=不限制）")
@@ -242,8 +242,8 @@ func cmdPush(args []string) {
 
 func cmdPull(args []string) {
 	fs := flag.NewFlagSet("pull", flag.ExitOnError)
-	serverURL := fs.String("server", os.Getenv("SKILLRELAY_SERVER"), "服务地址，如 http://1.2.3.4:8790")
-	token := fs.String("token", os.Getenv("SKILLRELAY_TOKEN"), "接入 token")
+	serverURL := fs.String("server", os.Getenv("SKILLSHOOTER_SERVER"), "服务地址，如 http://1.2.3.4:8790")
+	token := fs.String("token", os.Getenv("SKILLSHOOTER_TOKEN"), "接入 token")
 	dest := fs.String("dest", "", "拉取落盘目录（如 ~/.agents/skills）")
 	machine := fs.String("machine", "", "只拉某台机器的版本（空=全部，同名多机自动加 @machine 后缀）")
 	overwrite := fs.Bool("overwrite", false, "覆盖已存在的 skill 目录")
@@ -278,8 +278,8 @@ func cmdPull(args []string) {
 
 func cmdDaemon(args []string) {
 	fs := flag.NewFlagSet("daemon", flag.ExitOnError)
-	serverURL := fs.String("server", os.Getenv("SKILLRELAY_SERVER"), "hub 地址")
-	token := fs.String("token", os.Getenv("SKILLRELAY_TOKEN"), "接入 token")
+	serverURL := fs.String("server", os.Getenv("SKILLSHOOTER_SERVER"), "hub 地址")
+	token := fs.String("token", os.Getenv("SKILLSHOOTER_TOKEN"), "接入 token")
 	hostname := fs.String("hostname", "", "本机标识（默认取主机名）")
 	interval := fs.Int("interval", 30, "监控轮询间隔秒")
 	applyInterval := fs.Int("apply-interval", 300, "应用云端合并结果间隔秒")

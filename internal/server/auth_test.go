@@ -18,14 +18,14 @@ import (
 	"testing"
 	"time"
 
-	"skillrelay/internal/llm"
-	"skillrelay/internal/store"
+	"skillshooter/internal/llm"
+	"skillshooter/internal/store"
 )
 
 func newTestServer(t *testing.T) (*Server, *httptest.Server, string) {
 	t.Helper()
-	os.Setenv("SKILLRELAY_ADMIN_PASSWORD", adminTestPassword)
-	t.Cleanup(func() { os.Unsetenv("SKILLRELAY_ADMIN_PASSWORD") })
+	os.Setenv("SKILLSHOOTER_ADMIN_PASSWORD", adminTestPassword)
+	t.Cleanup(func() { os.Unsetenv("SKILLSHOOTER_ADMIN_PASSWORD") })
 	dir := t.TempDir()
 	st, err := store.Open(filepath.Join(dir, "test.db"))
 	if err != nil {

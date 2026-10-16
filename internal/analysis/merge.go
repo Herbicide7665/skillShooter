@@ -7,8 +7,8 @@ import (
 
 	"encoding/json"
 
-	"skillrelay/internal/llm"
-	"skillrelay/internal/store"
+	"skillshooter/internal/llm"
+	"skillshooter/internal/store"
 )
 
 // MergeProposal GLM 生成合并建议

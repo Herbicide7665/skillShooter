@@ -1,5 +1,5 @@
-﻿# skillrelay agent bootstrap for Windows (PowerShell 5.1+)
-# Downloads the binary to ~\.skillrelay\ and pushes every local agent skill
+﻿# skillshooter agent bootstrap for Windows (PowerShell 5.1+)
+# Downloads the binary to ~\.skillshooter\ and pushes every local agent skill
 # directory it can find to the hub. Safe to re-run (idempotent).
 param(
     [Parameter(Mandatory = $true)][string]$Server,
@@ -10,11 +10,11 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"  # PS5.1 progress rendering makes big downloads crawl
 
-$HubDir = Join-Path $env:USERPROFILE ".skillrelay"
+$HubDir = Join-Path $env:USERPROFILE ".skillshooter"
 New-Item -ItemType Directory -Force -Path $HubDir | Out-Null
-$Exe = Join-Path $HubDir "skillrelay.exe"
-Write-Host "==> download skillrelay.exe -> $Exe"
-Invoke-WebRequest -Uri "$Server/dl/skillrelay.exe" -OutFile $Exe -UseBasicParsing
+$Exe = Join-Path $HubDir "skillshooter.exe"
+Write-Host "==> download skillshooter.exe -> $Exe"
+Invoke-WebRequest -Uri "$Server/dl/skillshooter.exe" -OutFile $Exe -UseBasicParsing
 
 if (-not $Hostname) { $Hostname = $env:COMPUTERNAME }
 

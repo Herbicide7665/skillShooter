@@ -9,7 +9,7 @@ import (
 // 客户端自配置：server/token 追加在二进制文件尾部（PE/ELF/Mach-O 加载器不读尾部，
 // 不影响执行）；客户端启动时读自身文件尾部解析，实现"下载即用"。
 
-const cfgMarker = "\nSKILLRELAY-CLIENT-CONFIG\n"
+const cfgMarker = "\nSKILLSHOOTER-CLIENT-CONFIG\n"
 
 // AppendConfig 把配置追加到二进制文件副本尾部，返回带配置的字节流
 func AppendConfig(bin []byte, server, token string) ([]byte, error) {
@@ -69,7 +69,7 @@ func SelfConfig() (server, token string, ok bool) {
 // ConfigFilePath 客户端侧配置文件（内嵌配置首次启动时落盘，便于查看/手改）
 func ConfigFilePath() string {
 	home, _ := os.UserHomeDir()
-	return home + string(os.PathSeparator) + ".skillrelay" + string(os.PathSeparator) + "config.json"
+	return home + string(os.PathSeparator) + ".skillshooter" + string(os.PathSeparator) + "config.json"
 }
 
 // SaveConfigFile 配置落盘
