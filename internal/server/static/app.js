@@ -71,6 +71,19 @@ const I18N = {
 };
 let LANG = localStorage.getItem('sklang') || 'zh';
 function t(key) { return (I18N[LANG] && I18N[LANG][key]) || I18N.zh[key] || key; }
+// 服务端已知错误串的英文映射（服务端中文为主，客户端按当前语言转显）
+const ERR_EN = {
+  '用户名或密码错误': 'Wrong username or password',
+  '旧密码错误': 'Wrong old password',
+  '新密码至少 6 位': 'New password must be at least 6 chars',
+  '密码至少 6 位': 'Password must be at least 6 chars',
+  '用户名不能为空且密码至少 6 位': 'Username required; password min 6 chars',
+  '用户名已存在': 'Username already exists',
+  '不能删除最后一个管理员': 'Cannot delete the last admin',
+  'token 无效': 'Invalid token',
+  '需要管理员权限': 'Admin permission required',
+};
+function terr(msg) { return LANG === 'en' ? (ERR_EN[msg] || msg) : msg; }
 function toggleLang() {
   LANG = LANG === 'zh' ? 'en' : 'zh';
   localStorage.setItem('sklang', LANG);
@@ -166,7 +179,7 @@ function renderLogin() {
       applyRoleNav();
       location.hash = '#/dashboard';
       route();
-    } catch (e) { document.getElementById('lgmsg').textContent = e.message; }
+    } catch (e) { document.getElementById('lgmsg').textContent = terr(e.message); }
   };
   document.getElementById('lgbtn').onclick = doLogin;
   for (const id of ['lguser', 'lgpass']) document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
@@ -263,12 +276,12 @@ async function pageDashboard() {
     </div>
     <h2>${t('dash_families')}</h2>
     <div class="panel" style="display:flex;gap:8px;flex-wrap:wrap" id="famchips">
-      ${(await api('/families')).slice(0, 10).map(f => `<a href="#" class="famchip" onclick="sessionStorage.setItem('famPreselect','${esc(f.kind + ':' + esc(f.key))}');location.hash='#/skills';return false"><b>${esc(f.key)}</b> <span class="muted">${f.names.length} 个</span></a>`).join('') || '<span class="muted small">尚未生成。到「关系图」页点「更新关系」，GLM 会按内容聚类并固化。</span>'}
+      ${(await api('/families')).slice(0, 10).map(f => `<a href="#" class="famchip" onclick="sessionStorage.setItem('famPreselect','${esc(f.kind + ':' + esc(f.key))}');location.hash='#/skills';return false"><b>${esc(f.key)}</b> <span class="muted">${f.names.length} 个</span></a>`).join('') || (`<span class="muted small">${t('dash_families_empty')}</span>`)}
     </div>
     <h2>${t('dash_onlinestatus')}</h2>
     <div id="devbox"><div class="loading">加载中…</div></div>
     <h2>${t('dash_recent')}</h2>
-    <table class="tbl"><thead><tr><th>${t('dash_time')}</th><th>${t('dash_skill')}</th><th>${t('dash_generation')}</th><th>${t('dash_type')}</th><th>${t('dash_version')}</th></tr></thead><tbody>
+    <table class="tbl"><thead><tr><th>${t('dash_time')}</th><th>${t('dash_skill')}</th><th>${t('dash_monline')}</th><th>${t('dash_type')}</th><th>${t('dash_version')}</th></tr></thead><tbody>
     ${st.recent.map(r => `<tr>
       <td class="muted small">${esc(fmtTime(r.created_at))}</td>
       <td><a href="#/skill/${r.skill_id}">${esc(r.name)}</a></td>
@@ -883,7 +896,7 @@ async function pageSettings() {
       </div>
       ${admin ? `
       <div class="toolbar" style="flex-wrap:wrap;gap:8px;margin-top:10px">
-        <input type="text" id="llmkey" placeholder="API Key（${esc(s.llm.key_masked || (LANG === 'zh' ? '未设置' : 'not set'))}，${LANG === 'zh' ? '留空不改' : 'blank = keep'}）" style="min-width:300px;font-family:var(--mono)">
+        <input type="text" id="llmkey" placeholder="API Key (${esc(s.llm.key_masked || (LANG === 'zh' ? '未设置' : 'not set'))} · ${LANG === 'zh' ? '留空不改' : 'blank = keep'})" style="min-width:300px;font-family:var(--mono)">
         <input type="text" id="llmbase" placeholder="Base URL" value="${esc(s.llm.base_url || '')}" style="min-width:300px;font-family:var(--mono)">
         <input type="text" id="llmmodel" placeholder="Model" value="${esc(s.llm.model || '')}" style="min-width:220px;font-family:var(--mono)">
         <button class="primary" id="llmsave">${LANG === 'zh' ? '保存' : 'Save'}</button>
@@ -923,7 +936,7 @@ async function pageSettings() {
       <p class="small muted">${LANG === 'zh' ? '在目标机器终端粘贴执行：自动下载二进制到 ~/.skillshooter/，全盘收集本机 agent 工具的 skill 并上传。幂等可重复。' : 'Paste into the target terminal: downloads the binary to ~/.skillshooter/ and pushes all discovered skills. Idempotent.'}</p>
       <b class="small">Linux / macOS / Windows Git Bash</b>
       <div class="toolbar"><input type="text" readonly id="cmdUnix" class="mono" style="min-width:620px"><button onclick="window._copyCmd('cmdUnix')">${LANG === 'zh' ? '复制' : 'Copy'}</button></div>
-      <b class="small">Windows（PowerShell）</b>
+      <b class="small">${LANG === 'zh' ? 'Windows（PowerShell）' : 'Windows (PowerShell)'}</b>
       <div class="toolbar"><input type="text" readonly id="cmdWin" class="mono" style="min-width:620px"><button onclick="window._copyCmd('cmdWin')">${LANG === 'zh' ? '复制' : 'Copy'}</button></div>
       <b class="small">${LANG === 'zh' ? '反向分发（拉回合并成果）' : 'Pull merged results back'}</b>
       <div class="toolbar"><input type="text" readonly id="cmdPull" class="mono" style="min-width:620px"><button onclick="window._copyCmd('cmdPull')">${LANG === 'zh' ? '复制' : 'Copy'}</button></div>
@@ -973,7 +986,7 @@ async function pageSettings() {
       const note = document.getElementById('newtoknote').value.trim();
       try {
         const r = await apiPost('/tokens/create', { role: 'user', note, hostname: document.getElementById('newtokhost').value.trim() });
-        document.getElementById('newtokout').innerHTML = '<span style="color:var(--ok)">新 token（仅此一次显示）：</span><input readonly value="' + esc(r.token) + '" style="width:340px;font-family:var(--mono)">';
+        document.getElementById('newtokout').innerHTML = '<span style="color:var(--ok)">' + (LANG === 'zh' ? '新 token（仅此一次显示）：' : 'New token (shown once): ') + '</span><input readonly value="' + esc(r.token) + '" style="width:340px;font-family:var(--mono)">';
         loadTokens();
       } catch (e) { toast(e.message, true); }
     };
@@ -1043,7 +1056,7 @@ async function pageSettings() {
       const el = document.getElementById(id);
       el.select();
       navigator.clipboard.writeText(el.value).then(() => toast('已复制，去目标机器终端粘贴执行')).catch(() => {
-        document.execCommand('copy'); toast('已复制');
+        document.execCommand('copy'); toast(LANG === 'zh' ? '已复制' : 'Copied');
       });
     };
     window._dlClient = async name => {
@@ -1068,15 +1081,15 @@ async function pageSettings() {
           base_url: document.getElementById('llmbase').value.trim(),
           model: document.getElementById('llmmodel').value.trim(),
         });
-        toast(r.enabled ? '已保存并生效（LLM 已配置）' : '已保存（key/model 不完整，LLM 未启用）');
+        toast(r.enabled ? (LANG === 'zh' ? '已保存并生效（LLM 已配置）' : 'Saved & active (LLM configured)') : (LANG === 'zh' ? '已保存（key/model 不完整，LLM 未启用）' : 'Saved (key/model incomplete, LLM disabled)'));
         pageSettings();
       } catch (e) { toast(e.message, true); }
     };
     document.getElementById('llmtestbtn').onclick = async () => {
-      document.getElementById('llmres').textContent = '测试中…';
+      document.getElementById('llmres').textContent = LANG === 'zh' ? '测试中…' : 'Testing…';
       try {
         const r = await apiPost('/settings/llm-test');
-        document.getElementById('llmres').innerHTML = '<span style="color:var(--ok)">✓ 连通正常，模型回复: ' + esc(r.reply) + '</span>';
+        document.getElementById('llmres').innerHTML = '<span style="color:var(--ok)">✓ ' + (LANG === 'zh' ? '连通正常，模型回复: ' : 'OK, model replied: ') + esc(r.reply) + '</span>';
       } catch (e) {
         document.getElementById('llmres').innerHTML = '<span style="color:var(--danger)">✗ ' + esc(e.message) + '</span>';
       }
@@ -1084,12 +1097,12 @@ async function pageSettings() {
   }
   document.getElementById('pwbtn').onclick = async () => {
     const old_ = document.getElementById('pwold').value, nw = document.getElementById('pwnew').value;
-    if (!nw || nw.length < 6) { document.getElementById('pwmsg').textContent = '新密码至少 6 位'; return; }
+    if (!nw || nw.length < 6) { document.getElementById('pwmsg').textContent = LANG === 'zh' ? '新密码至少 6 位' : 'New password must be at least 6 chars'; return; }
     try {
       await apiPost('/password', {old: old_, new: nw});
-      document.getElementById('pwmsg').innerHTML = '<span style="color:var(--ok)">✓ 已修改</span>';
+      document.getElementById('pwmsg').innerHTML = '<span style="color:var(--ok)">✓ ' + (LANG === 'zh' ? '已修改' : 'Changed') + '</span>';
       document.getElementById('pwold').value = ''; document.getElementById('pwnew').value = '';
-    } catch (e) { document.getElementById('pwmsg').innerHTML = '<span style="color:var(--danger)">✗ ' + esc(e.message) + '</span>'; }
+    } catch (e) { document.getElementById('pwmsg').innerHTML = '<span style="color:var(--danger)">✗ ' + esc(terr(e.message)) + '</span>'; }
   };
 }
 
