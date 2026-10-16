@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"net"
@@ -11,6 +10,7 @@ import (
 	"os/signal"
 	"strings"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -125,6 +125,8 @@ func main() {
 		cmdPull(os.Args[2:])
 	case "daemon":
 		cmdDaemon(os.Args[2:])
+	case "config":
+		cmdConfig(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -147,6 +149,8 @@ func usage() {
       --assigned: 只拉"分配给本机"的 skill 集合（--machine 填本机名，落盘 --dest）
   skillshooter upload --server URL --token TOKEN --path <目录> [--hostname 名字]
       上传本地 skill 到后台（等价 push，语义化别名）
+  skillshooter config
+      终端问答式编辑客户端配置（~/.skillshooter/config.json），改完重启客户端生效
   skillshooter daemon --server URL --token TOKEN [--hostname 名字] [选项]
       常驻客户端：增量监控本机 agent 目录推送 + 应用云端合并结果 + 部署分配 skill + 心跳探活 + 接收远程 skill 调用
       选项: --interval 30  --apply-interval 300  --job-poll 5  --heartbeat 1800  --roots 路径1,路径2
@@ -327,28 +331,113 @@ func cmdDaemon(args []string) {
 }
 
 // runClientDefault 无参数双击模式：读自身尾部内嵌配置（回落 config.json），
-// 有配置则直接以托盘（Windows）/CLI（其他）常驻；无配置弹窗提示。
+// 有配置则直接以托盘（Windows）/CLI（其他）常驻；无配置弹配置窗引导。
 func runClientDefault() {
-	server, token, ok := daemon.SelfConfig()
-	if !ok {
-		if p := daemon.ConfigFilePath(); func() bool { _, err := os.Stat(p); return err == nil }() {
-			if b, err := os.ReadFile(p); err == nil {
-				var cfg struct{ Server, Token string }
-				if json.Unmarshal(b, &cfg) == nil && cfg.Server != "" && cfg.Token != "" {
-					server, token, ok = cfg.Server, cfg.Token, true
-				}
-			}
+	server, token, selfOK := daemon.SelfConfig()
+	cfg, cfgOK := daemon.LoadClientConfig()
+	if cfgOK && (!selfOK || (cfg.Server == server && cfg.Token == token)) {
+		// config.json 已是有效全量配置（含内嵌来源首次落盘后的情形）→ 直接用
+	} else if selfOK {
+		// 有内嵌配置但 config.json 缺失或不一致：以其为 server/token 落盘（保留用户已调的其他字段）
+		if cfgOK {
+			cfg.Server, cfg.Token = server, token
+		} else {
+			cfg = daemon.ClientConfig{Server: server, Token: token}
+		}
+		daemon.SaveClientConfig(cfg)
+	} else if cfgOK {
+		// 仅 config.json 有效：直接用
+	} else {
+		// 首次使用：Windows 弹原生配置窗完成初始配置
+		if !daemon.ShowConfigDialog(daemon.ClientConfig{}) {
+			daemon.AlertNoConfig()
+			os.Exit(1)
+		}
+		cfg, cfgOK = daemon.LoadClientConfig()
+		if !cfgOK {
+			fmt.Fprintln(os.Stderr, "配置未保存，退出")
+			os.Exit(1)
 		}
 	}
-	hn, _ := os.Hostname()
-	opt := daemon.Options{Server: server, Token: token, Hostname: hn}
-	if !ok {
-		daemon.AlertNoConfig()
-		os.Exit(1)
-	}
-	daemon.SaveConfigFile(server, token)
+	stop := make(chan struct{})
+	opt, _ := cfg.Options(stop, make(chan struct{}), make(chan struct{}), make(chan struct{}))
 	if err := daemon.RunTray(opt); err != nil {
 		fmt.Fprintf(os.Stderr, "daemon 退出: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// cmdConfig 终端问答式编辑客户端配置（跨平台兜底；Windows 也可用）
+func cmdConfig(args []string) {
+	cfg, ok := daemon.LoadClientConfig()
+	if !ok {
+		cfg = daemon.ClientConfig{}
+		fmt.Println("（当前无配置，将创建 ~/.skillshooter/config.json）")
+	} else {
+		tokPrev := cfg.Token
+		if len(tokPrev) > 6 {
+			tokPrev = tokPrev[:6]
+		}
+		fmt.Printf("当前配置: server=%s token=%s… hostname=%s heartbeat=%ds watch=%ds apply=%ds roots=%v\n",
+			cfg.Server, tokPrev, cfg.Hostname, cfg.HeartbeatSec, cfg.Interval, cfg.ApplyInterval, cfg.Roots)
+	}
+	ask := func(label, cur string) string {
+		fmt.Printf("%s [%s]: ", label, cur)
+		var in string
+		fmt.Scanln(&in)
+		if strings.TrimSpace(in) == "" {
+			return cur
+		}
+		return strings.TrimSpace(in)
+	}
+	cfg.Server = ask("服务端地址", cfg.Server)
+	cfg.Token = ask("Token", cfg.Token)
+	cfg.Hostname = ask("设备名(空=主机名)", cfg.Hostname)
+	if v := ask("心跳间隔(分钟)", func() string {
+		if cfg.HeartbeatSec > 0 {
+			return fmt.Sprint(cfg.HeartbeatSec / 60)
+		}
+		return "30"
+	}()); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.HeartbeatSec = n * 60
+		}
+	}
+	if v := ask("监控推送间隔(秒)", func() string {
+		if cfg.Interval > 0 {
+			return fmt.Sprint(cfg.Interval)
+		}
+		return "30"
+	}()); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.Interval = n
+		}
+	}
+	if v := ask("应用云端合并间隔(秒)", func() string {
+		if cfg.ApplyInterval > 0 {
+			return fmt.Sprint(cfg.ApplyInterval)
+		}
+		return "300"
+	}()); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.ApplyInterval = n
+		}
+	}
+	if v := ask("监控目录(逗号分隔,空=自动发现)", strings.Join(cfg.Roots, ",")); v != "" {
+		cfg.Roots = nil
+		for _, r := range strings.Split(v, ",") {
+			if r = strings.TrimSpace(r); r != "" {
+				cfg.Roots = append(cfg.Roots, r)
+			}
+		}
+	}
+	if cfg.Server == "" || cfg.Token == "" {
+		fmt.Println("服务端地址与 Token 必填，未保存")
+		os.Exit(1)
+	}
+	if err := daemon.SaveClientConfig(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "保存失败: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("已保存", daemon.ConfigFilePath(), "；重启客户端后生效（托盘退出→重新双击，或重跑 daemon）")
 }

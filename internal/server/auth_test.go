@@ -170,7 +170,7 @@ func TestLoginSessionAndRoles(t *testing.T) {
 		t.Fatalf("user dispatch: got %d want 403", resp.StatusCode)
 	}
 
-	// user token 读端点 200；jobs/next 返回空任务（不领取）
+	// PROTOCOL v2.2：user token 是纯客户端凭据——stats 等管理视图 403；设备域读端点可用
 	req, _ = http.NewRequest("GET", ts.URL+"/api/stats", nil)
 	req.Header.Set("X-Token", utok)
 	resp, err = client.Do(req)
@@ -178,8 +178,19 @@ func TestLoginSessionAndRoles(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != 200 {
-		t.Fatalf("user stats: got %d want 200", resp.StatusCode)
+	if resp.StatusCode != 403 {
+		t.Fatalf("user stats(management view): got %d want 403", resp.StatusCode)
+	}
+	// 未绑定设备的 user token：skills 列表也 403（待认领）
+	req, _ = http.NewRequest("GET", ts.URL+"/api/skills", nil)
+	req.Header.Set("X-Token", utok)
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 403 {
+		t.Fatalf("unbound user skills: got %d want 403", resp.StatusCode)
 	}
 
 	// 匿名全拒

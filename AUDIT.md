@@ -162,3 +162,30 @@
 ### 9.6 遗留建议
 - 登录限速为内存态，重启清零（可接受：会话暴力破解面有限，PBKDF2 60k 轮本身减速）
 - 无 TLS 前提下会话 cookie 明文传输——部署在公网时仍建议反向代理加 TLS（与 token 嗅探限制同源）
+
+
+## 十、v2.2 设备域增量审计（2026-10-16）
+
+### 10.1 user token 设备绑定
+- tokens.hostname 列（幂等 ALTER）；TokenPrincipal → (ok, role, machine)；主 token 不绑设备
+- 认领即锁死：UPDATE ... WHERE hostname='' 原子认领；换 hostname push/heartbeat 403
+- admin 改绑/解绑：POST /api/tokens/rebind（支持掩码传参）；设置页 UI 化
+- UI 创建 token 可预填设备名（留空=待认领）；表格显示绑定状态
+
+### 10.2 权限边界重述
+- user token = 纯客户端凭据：只有设备域同步面（push/heartbeat/拉取/回执），管理视图 403
+- web user 账号（会话）= 全局只读视角（不变）
+- admin token / admin 会话 = 全权（不变，VPS 自推 daemon 用主 token 不受影响）
+
+### 10.3 客户端配置面
+- config.json 升级为全量配置（服务端/Token/设备名/三个间隔/监控目录/四个开关），旧两字段格式与内嵌配置二进制兼容
+- 托盘新增「配置…」：Win32 原生模态弹窗（内存 DLGTEMPLATE，零新依赖），含【测试连接】（whoami 回显角色+绑定设备）；保存后 spawn 新进程自重启
+- 首次双击无配置：Windows 直接弹配置窗完成初始接入
+- skillshooter config CLI 子命令：终端问答式（跨平台兜底）
+
+### 10.4 缺陷修复
+- SetTokenHostname 掩码反查死锁：MaxOpenConns(1) 下 rows 未关就 Exec → 全量收集后关闭再 Exec（同 §8 传统坑的复发，测试套件捕获）
+
+### 10.5 已知限制
+- hostname 认领对该 token 首见的设备无条件信任（单租户模型可接受；被抢注可在设置页改绑）
+- 配置弹窗 Monospace 换行布局在极端 DPI 下可能拥挤（原生对话框坐标单位）

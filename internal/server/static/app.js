@@ -769,11 +769,12 @@ async function pageSettings() {
       </div>
       <h2>用户 Token 管理</h2>
       <div class="toolbar">
-        <input type="text" id="newtoknote" placeholder="备注（如：VM1）" style="min-width:160px">
+        <input type="text" id="newtoknote" placeholder="备注（如：VM1）" style="min-width:140px">
+        <input type="text" id="newtokhost" placeholder="绑定设备名（留空=客户端首次使用自动认领）" style="min-width:240px">
         <button class="primary" id="mkuser">创建用户 token</button>
         <span id="newtokout" class="mono small"></span>
       </div>
-      <table class="tbl" id="toktbl"><thead><tr><th>Token</th><th>角色</th><th>备注</th><th>创建时间</th><th></th></tr></thead><tbody></tbody></table>
+      <table class="tbl" id="toktbl"><thead><tr><th>Token</th><th>角色</th><th>备注</th><th>绑定设备</th><th>创建时间</th><th></th></tr></thead><tbody></tbody></table>
     </div>` : ''}
     <div class="panel">
       <h2 style="margin-top:0">LLM 接入（自定义模型）</h2>
@@ -841,9 +842,11 @@ async function pageSettings() {
           <td class="mono small">${esc(t.token_masked)}</td>
           <td><span class="badge ${t.role === 'admin' ? 'b-merged' : 'b-machine'}">${esc(t.role)}</span></td>
           <td>${esc(t.note || '')}</td>
+          <td>${t.hostname ? `<span class="badge b-machine">${esc(t.hostname)}</span>` : '<span class="muted small">待认领</span>'}</td>
           <td class="muted small">${esc(fmtTime(t.created_at))}</td>
-          <td><button onclick="window._revokeTok('${esc(t.token_masked)}')">吊销</button></td>
-        </tr>`).join('') || '<tr><td colspan="5" class="muted small">暂无角色 token（现有各客户端用主 token）</td></tr>';
+          <td><button onclick="window._rebindTok('${esc(t.token_masked)}', '${esc(t.hostname || '')}')">改绑</button>
+              <button onclick="window._revokeTok('${esc(t.token_masked)}')">吊销</button></td>
+        </tr>`).join('') || '<tr><td colspan="6" class="muted small">暂无角色 token（现有各客户端用主 token）</td></tr>';
       } catch (e) {}
     };
     loadTokens();
@@ -851,10 +854,16 @@ async function pageSettings() {
     if (mkBtn) mkBtn.onclick = async () => {
       const note = document.getElementById('newtoknote').value.trim();
       try {
-        const r = await apiPost('/tokens/create', { role: 'user', note });
+        const r = await apiPost('/tokens/create', { role: 'user', note, hostname: document.getElementById('newtokhost').value.trim() });
         document.getElementById('newtokout').innerHTML = '<span style="color:var(--ok)">新 token（仅此一次显示）：</span><input readonly value="' + esc(r.token) + '" style="width:340px;font-family:var(--mono)">';
         loadTokens();
       } catch (e) { toast(e.message, true); }
+    };
+    window._rebindTok = async (masked, cur) => {
+      const host = prompt('改绑设备（留空=解绑回待认领态）。当前: ' + (cur || '待认领'), cur || '');
+      if (host === null) return;
+      try { await apiPost('/tokens/rebind', { token: masked, hostname: host.trim() }); toast(host.trim() ? '已改绑 ' + host.trim() : '已解绑（待认领）'); loadTokens(); }
+      catch (e) { toast(e.message, true); }
     };
     window._revokeTok = async masked => {
       if (!confirm('吊销该 token？对应客户端将立即失去访问。')) return;

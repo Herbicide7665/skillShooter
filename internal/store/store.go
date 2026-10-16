@@ -196,6 +196,7 @@ CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src_id);
 	if _, err := s.db.Exec(schema); err != nil {
 		return err
 	}
+	s.migrateTokensHostname()
 	// 幂等迁移：旧库补 is_system 列 + 按已知内置名单回填
 	_, _ = s.db.Exec(`ALTER TABLE skills ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0`)
 	_, err := s.db.Exec(`UPDATE skills SET is_system=1 WHERE name IN (
@@ -326,24 +327,28 @@ func (s *Store) CreateRoleToken(role, note string) (string, error) {
 	return tok, err
 }
 
+// TokenMask 统一脱敏（前6…后4）
+func TokenMask(tok string) string {
+	if len(tok) > 10 {
+		return tok[:6] + "…" + tok[len(tok)-4:]
+	}
+	return tok
+}
+
 // ListTokens token 列表（脱敏展示）
 func (s *Store) ListTokens() ([]map[string]interface{}, error) {
-	rows, err := s.db.Query(`SELECT token, role, note, created_at FROM tokens ORDER BY created_at DESC`)
+	rows, err := s.db.Query(`SELECT token, role, note, hostname, created_at FROM tokens ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := []map[string]interface{}{}
 	for rows.Next() {
-		var tok, role, note, created string
-		if err := rows.Scan(&tok, &role, &note, &created); err != nil {
+		var tok, role, note, host, created string
+		if err := rows.Scan(&tok, &role, &note, &host, &created); err != nil {
 			return nil, err
 		}
-		masked := tok
-		if len(tok) > 10 {
-			masked = tok[:6] + "…" + tok[len(tok)-4:]
-		}
-		out = append(out, map[string]interface{}{"token_masked": masked, "role": role, "note": note, "created_at": created})
+		out = append(out, map[string]interface{}{"token_masked": TokenMask(tok), "role": role, "note": note, "hostname": host, "created_at": created})
 	}
 	return out, rows.Err()
 }

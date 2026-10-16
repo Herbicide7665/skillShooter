@@ -1,11 +1,11 @@
-# Skill Manager 通讯协议 v2.1
+# SkillShooter 通讯协议 v2.2
 
 2026-10-16 起生效。适用于 web 后台（账号登录）↔ exe 客户端（daemon/push/pull）与浏览器 UI 之间的全部 `/api/*` 通讯。
 
 ## 1. 总览
 
 - 传输层：HTTP（Hub 当前部署为明文 HTTP，无 TLS）。**token 绝不明文上 wire**——认证走 HMAC-SHA256 请求签名。
-- 认证三模式（v2.1 起浏览器与 API 分离）：
+- 认证三模式（v2.2 起浏览器与 API 分离，user token 设备域化）：
   - **会话模式（浏览器 UI）**：`POST /api/login` 用户名口令登录 → HttpOnly `Session` cookie（30 天）。token 与浏览器彻底解耦。
   - **签名模式（API 客户端，推荐）**：请求携带 `X-Key-ID / X-Timestamp / X-Nonce / X-Body-SHA256 / X-Sign` 五个头，不含 token。
   - **明文模式（旧客户端兼容宽限期）**：仅携带 `X-Token` 头。将被逐步淘汰；中间人可嗅探该头。
@@ -114,6 +114,12 @@ signString = METHOD + "\n" + pathWithQuery + "\n" + X-Timestamp + "\n" + X-Nonce
 
 ## 8. 安全性质小结
 
+- **v2.2 设备域（user token 绑定设备）**：
+  - tokens 表加 hostname 列，一 token 一设备。创建时 hostname 可空（待认领）。
+  - **首次使用自动认领**：未绑定 token 的 push/heartbeat 以上报 hostname 认领并锁死；此后 hostname 不符一律 403。admin 在设置页改绑/解绑（POST /api/tokens/rebind）。
+  - **读端点按设备域过滤**：user token 只见"本机推送 + 分配给本机"的 skill（列表/详情/文件/版本/下载/canonical）；machines 只回本机；assignments/dispatches 认领限本机。
+  - **管理视图拒入**：stats/graph/families/dup/edges/jobs 对纯 user token 403（web 管理面走账号登录；web user 账号仍全局只读）。
+  - **未绑定 token** 只能 push/heartbeat（触发认领）与 whoami，其余 403。
 - **防嗅探**：签名模式下 token 不出现在任何请求中；浏览器走会话 cookie，token 与浏览器解耦
 - **登录防爆破**：同用户名连续失败 5 次锁 60 秒（内存态）；`X-Key-ID` 仅泄露 sha256 前 64 bit，不可逆。
 - **防重放**：时间窗 + nonce 缓存（重启清空由时间窗兜底）。

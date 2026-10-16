@@ -5,6 +5,7 @@ package daemon
 import (
 	_ "embed"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime/debug"
 	"syscall"
@@ -44,6 +45,7 @@ func RunTray(opt Options) error {
 		systray.SetTitle("SkillShooter")
 		systray.SetTooltip("SkillShooter 客户端 — " + opt.Hostname)
 		mOpen := systray.AddMenuItem("打开 Hub 页面", "在浏览器打开 "+opt.Server)
+	mConf := systray.AddMenuItem("配置…", "修改服务端地址/Token/设备名/心跳间隔（保存后自动重启生效）")
 		mSync := systray.AddMenuItem("立即同步", "推送本机变更 + 应用云端合并 + 部署云端分配 skill")
 		mUpload := systray.AddMenuItem("上传本机全部 skill", "强制全量推送所有监控目录（不依赖增量签名）")
 		mPull := systray.AddMenuItem("下载云端分配 skill", "拉取后台分配给本设备的 skill 集合并落盘")
@@ -66,6 +68,20 @@ func RunTray(opt Options) error {
 				select {
 				case <-mOpen.ClickedCh:
 					exec.Command("rundll32", "url.dll,FileProtocolHandler", opt.Server).Start()
+				case <-mConf.ClickedCh:
+					if cur, okc := LoadClientConfig(); okc || true {
+						if ShowConfigDialog(cur) {
+							log("配置已更新，重启客户端…")
+							if h, err := os.Executable(); err == nil {
+								if proc := exec.Command(h); proc != nil {
+									proc.Start()
+								}
+							}
+							close(opt.Stop)
+							systray.Quit()
+							return
+						}
+					}
 				case <-mSync.ClickedCh:
 					select {
 					case opt.SyncNow <- struct{}{}:

@@ -4,6 +4,12 @@
 
 一个单二进制、零依赖的自托管 web 平台，用于集中管理散落在多台机器、多个 agent 工具（ZCode / Claude Code 等）里的 skill（每个 skill = 一个含 `SKILL.md` 的目录）。
 
+## v2.2 用户权限模型（2026-10-16）
+
+- **web 后台 = 账号登录**（admin/user 角色），user 账号全局只读
+- **API token = 客户端凭据**：admin 主 token 全权（服务端自用）；**user token 一律绑定设备**（创建时可留空，客户端首次 push/心跳自动认领锁死），只能同步"本机推送 + 分配给本机"的 skill，管理视图 403
+- **客户端配置**：托盘「配置…」原生弹窗（服务端地址/Token/设备名/心跳·监控·应用间隔/监控目录，测试连接，保存自重启）；`skillshooter config` CLI 终端问答
+
 ## 特性
 
 - **双模式单二进制**：`serve` 起 web 服务，`push` 从任意机器上传 skill，复制 exe 即接入

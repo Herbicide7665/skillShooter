@@ -82,8 +82,8 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		ok, role := s.st.TokenRole(r.Header.Get("X-Token"))
-		writeJSON(w, 200, map[string]interface{}{"ok": ok, "role": role, "auth": "token"})
+		ok, role, host := s.st.TokenPrincipal(r.Header.Get("X-Token"))
+		writeJSON(w, 200, map[string]interface{}{"ok": ok, "role": role, "machine": host, "auth": "token"})
 		return
 	}
 	// 认证统一在 resolvePrincipal：会话 cookie > X-Sign 签名 > X-Token 明文（旧客户端兼容，待淘汰）
@@ -98,6 +98,9 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case len(parts) == 1 && parts[0] == "push" && r.Method == "POST":
 		s.handlePush(w, r)
 	case parts[0] == "stats" && r.Method == "GET":
+		if s.denyUserToken(w, r, "/api/stats") {
+			return
+		}
 		st, err := s.st.GetStats()
 		if err != nil {
 			writeErr(w, 500, err.Error())
@@ -110,12 +113,28 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, err.Error())
 			return
 		}
+		// 设备域：user token 只看自己
+		if _, role, host := s.principal(r); role == "user" {
+			kept := []store.MachineRow{}
+			for _, m := range ms {
+				if m.Hostname == host {
+					kept = append(kept, m)
+				}
+			}
+			ms = kept
+		}
 		writeJSON(w, 200, ms)
 	case parts[0] == "skills":
 		s.handleSkills(w, r, parts)
 	case parts[0] == "dup":
+		if s.denyUserToken(w, r, "/api/dup") {
+			return
+		}
 		s.handleDup(w, r, parts)
 	case parts[0] == "graph" && r.Method == "GET":
+		if s.denyUserToken(w, r, "/api/graph") {
+			return
+		}
 		skills, err := s.st.ListSkills("", "")
 		if err != nil {
 			writeErr(w, 500, err.Error())
@@ -128,6 +147,9 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, 200, map[string]interface{}{"skills": skills, "edges": edges})
 	case parts[0] == "edges":
+		if s.denyUserToken(w, r, "/api/edges") {
+			return
+		}
 		if len(parts) == 2 && parts[1] == "scan" && r.Method == "POST" {
 			if !s.requireRole(w, r, true) {
 				writeErr(w, 401, "token 无效")
@@ -166,6 +188,9 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, 200, edges)
 	case parts[0] == "families" && r.Method == "GET":
+		if s.denyUserToken(w, r, "/api/families") {
+			return
+		}
 		// 只读固化结果，不触发任何 LLM/静态分析
 		fams, err := s.st.ListFamilies()
 		if err != nil {
@@ -202,14 +227,15 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body struct {
-			Role string `json:"role"`
-			Note string `json:"note"`
+			Role     string `json:"role"`
+			Note     string `json:"note"`
+			Hostname string `json:"hostname"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || (body.Role != "admin" && body.Role != "user") {
 			writeErr(w, 400, "role 必须是 admin 或 user")
 			return
 		}
-		tok, err := s.st.CreateRoleToken(body.Role, body.Note)
+		tok, err := s.st.CreateRoleTokenWithHost(body.Role, body.Note, body.Hostname)
 		if err != nil {
 			writeErr(w, 500, err.Error())
 			return
@@ -231,11 +257,41 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, 200, map[string]string{"ok": "1"})
+	case parts[0] == "tokens" && len(parts) == 2 && parts[1] == "rebind" && r.Method == "POST":
+		// admin 改绑/解绑 user token 的设备（hostname 空 = 解绑回待认领态）
+		if !s.requireRole(w, r, true) {
+			return
+		}
+		var body struct {
+			Token    string `json:"token"`
+			Hostname string `json:"hostname"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Token == "" {
+			writeErr(w, 400, "需要 token")
+			return
+		}
+		if err := s.st.SetTokenHostname(body.Token, body.Hostname); err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]string{"ok": "1"})
 	case parts[0] == "canonical" && r.Method == "GET":
+		if !s.gateUserTokenRead(w, r) {
+			return
+		}
 		cs, err := s.st.CanonicalMerges()
 		if err != nil {
 			writeErr(w, 500, err.Error())
 			return
+		}
+		if scope := s.deviceScope(r); scope != nil {
+			kept := []store.CanonEntry{}
+			for _, c := range cs {
+				if scope[c.SkillID] {
+					kept = append(kept, c)
+				}
+			}
+			cs = kept
 		}
 		writeJSON(w, 200, cs)
 	case parts[0] == "heartbeat" && r.Method == "POST":
@@ -255,7 +311,7 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 			},
 		}
 		// 管理员主 token 只回给 admin（user/匿名不可见，防提权读取）
-		if ok, role := s.principal(r); ok && role == "admin" {
+		if ok, role, _ := s.principal(r); ok && role == "admin" {
 			tok, _ := s.st.EnsureToken()
 			out["token"] = tok
 		}
@@ -433,48 +489,87 @@ func splitPath(p string) []string {
 
 // ---- 认证 ----
 
-// principalRole 每请求缓存一次身份解析结论（签名校验含 nonce 一次性消耗，
+// principalCtx 每请求缓存一次身份解析结论（签名校验含 nonce 一次性消耗，
 // 网关与 requireRole 多次解析必须复用同一结论，否则第二次会误判重放 401）
 type principalCacheKey struct{}
 
-// principal 读缓存的身份结论（须先经 authGate 解析）
-func (s *Server) principal(r *http.Request) (bool, string) {
-	if v, ok := r.Context().Value(principalCacheKey{}).([2]interface{}); ok {
-		return v[0].(bool), v[1].(string)
-	}
-	return s.resolvePrincipal(r)
+type principalCtx struct {
+	ok      bool
+	role    string
+	machine string // user token 绑定的设备；admin/会话为空
+	token   string // 认证所用的 token（会话身份为空）
 }
 
-// authGate 网关校验：解析身份并写入 context 缓存
+// principal 读缓存的身份结论（须先经 authGate 解析）
+func (s *Server) principal(r *http.Request) (bool, string, string) {
+	if v, ok := r.Context().Value(principalCacheKey{}).(*principalCtx); ok {
+		return v.ok, v.role, v.machine
+	}
+	ok, role, machine := s.resolvePrincipal(r)
+	return ok, role, machine
+}
+
+// authGate 网关校验：解析身份并写入 context 缓存（含认证 token，供认领写库用）
 func (s *Server) authGate(r *http.Request) (*http.Request, bool, string) {
-	ok, role := s.resolvePrincipal(r)
+	ok, role, machine, tok := s.resolvePrincipalWithToken(r)
 	if ok {
-		r = r.WithContext(context.WithValue(r.Context(), principalCacheKey{}, [2]interface{}{ok, role}))
+		r = r.WithContext(context.WithValue(r.Context(), principalCacheKey{}, &principalCtx{ok, role, machine, tok}))
 	}
 	return r, ok, role
 }
 
-func (s *Server) resolvePrincipal(r *http.Request) (bool, string) {
+// resolvePrincipalWithToken 同 resolvePrincipal 但把命中的 token 一并返回
+func (s *Server) resolvePrincipalWithToken(r *http.Request) (bool, string, string, string) {
 	if ck, err := r.Cookie("Session"); err == nil {
 		if _, _, role, ok := s.st.SessionPrincipal(ck.Value); ok {
-			return true, role
+			return true, role, "", ""
 		}
 	}
+	tok := r.Header.Get("X-Token")
 	if r.Header.Get("X-Sign") != "" {
-		tok, ok := s.signedToken(nil, r)
+		t, ok := s.signedToken(nil, r)
 		if !ok {
-			return false, ""
+			return false, "", "", ""
 		}
-		_, role := s.st.TokenRole(tok)
-		return true, role
+		tok = t
 	}
-	return s.st.TokenRole(r.Header.Get("X-Token"))
+	ok, role, machine := s.st.TokenPrincipal(tok)
+	return ok, role, machine, tok
 }
 
-// requireRole 通用门：校验并写 401/403
+// tokenOf 从 ctx 取认证 token（handlePush 认领等场景）
+func (s *Server) tokenOf(r *http.Request) string {
+	if v, ok := r.Context().Value(principalCacheKey{}).(*principalCtx); ok {
+		return v.token
+	}
+	return r.Header.Get("X-Token")
+}
+
+func (s *Server) resolvePrincipal(r *http.Request) (bool, string, string) {
+	if ck, err := r.Cookie("Session"); err == nil {
+		if _, _, role, ok := s.st.SessionPrincipal(ck.Value); ok {
+			return true, role, "" // 会话身份：web 账号，不绑定设备
+		}
+	}
+	tok := r.Header.Get("X-Token")
+	if r.Header.Get("X-Sign") != "" {
+		t, ok := s.signedToken(nil, r)
+		if !ok {
+			return false, "", ""
+		}
+		tok = t
+	}
+	return s.st.TokenPrincipal(tok)
+}
+
+// requireRole 通用门：校验并写 401/403（管理端点 user token 一律 403——user token 只服务客户端，管理面走 web 会话/admin token）
 func (s *Server) requireRole(w http.ResponseWriter, r *http.Request, admin bool) bool {
-	ok, role := s.principal(r)
-	if !ok {
+	_, role, _ := s.principal(r)
+	return s.requireRoleOf(w, r, admin, role)
+}
+
+func (s *Server) requireRoleOf(w http.ResponseWriter, r *http.Request, admin bool, role string) bool {
+	if role == "" {
 		writeErr(w, 401, "未认证（浏览器请登录，API 请带 token 或签名）")
 		return false
 	}
@@ -485,13 +580,101 @@ func (s *Server) requireRole(w http.ResponseWriter, r *http.Request, admin bool)
 	return true
 }
 
+// denyUserToken 管理视图闸：user token 是纯客户端凭据（PROTOCOL v2.2），
+// 全局统计/图/去重等管理端点对其 403；web 会话用户不受此限。
+func (s *Server) denyUserToken(w http.ResponseWriter, r *http.Request, what string) bool {
+	if v, ok := r.Context().Value(principalCacheKey{}).(*principalCtx); ok && v.role == "user" && v.token != "" {
+		// 会话身份 token 恒空被放行；纯 user token（客户端凭据）拒绝管理视图
+		writeErr(w, 403, "user token 仅限客户端同步用，管理视图请用 web 账号登录（"+what+"）")
+		return true
+	}
+	return false
+}
+
+// deviceScope user token → 绑定设备的 skill id 域；admin/会话 → nil（不过滤）
+func (s *Server) deviceScope(r *http.Request) map[int64]bool {
+	ok, role, machine := s.principal(r)
+	if !ok || role != "user" || machine == "" {
+		return nil
+	}
+	scope, err := s.st.DeviceSkillScope(machine)
+	if err != nil {
+		return map[int64]bool{}
+	}
+	return scope
+}
+
+// gateUserTokenRead user token 专属闸：只允许已绑定设备的客户端走读端点
+func (s *Server) gateUserTokenRead(w http.ResponseWriter, r *http.Request) bool {
+	_, role, machine := s.principal(r)
+	if role == "user" && machine == "" {
+		writeErr(w, 403, "token 尚未绑定设备：先完成一次推送/心跳以自动认领，或让管理员在设置页改绑")
+		return false
+	}
+	return true
+}
+
+// enforceHostname user token 下校验/认领上报 hostname；admin/会话直接放行
+func (s *Server) enforceHostname(w http.ResponseWriter, r *http.Request, reported string) bool {
+	_, role, machine := s.principal(r)
+	if role != "user" || machine != "" {
+		// admin 主 token / 会话身份不绑设备，放行
+		if role == "user" {
+			return false // 不可达：user 必有设备或未绑
+		}
+		return true
+	}
+	if reported == "" {
+		writeErr(w, 400, "需要 hostname")
+		return false
+	}
+	if err := s.st.AdoptTokenHostname(r.Header.Get("X-Token"), reported); err != nil {
+		if s.rememberHostname(r, reported) {
+			return true // 同请求内已认领过（签名模式下 X-Token 头为空，认领记录在 ctx）
+		}
+		writeErr(w, 403, err.Error())
+		return false
+	}
+	s.rememberHostname(r, reported)
+	return true
+}
+
+// rememberHostname 签名模式下 X-Token 为空，认领后把绑定结果记进 ctx 使同请求内可用（幂等）
+func (s *Server) rememberHostname(r *http.Request, host string) bool {
+	if v, ok := r.Context().Value(principalCacheKey{}).(*principalCtx); ok && v.role == "user" {
+		v.machine = host
+		return true
+	}
+	return false
+}
+
 // ---- skills ----
 
 func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request, parts []string) {
+	// 设备域（PROTOCOL v2.2）：user token 只能访问绑定设备域内的 skill
+	if len(parts) >= 2 && parts[0] == "skills" {
+		if !s.gateUserTokenRead(w, r) {
+			return
+		}
+		if scope := s.deviceScope(r); scope != nil {
+			id, err := strconv.ParseInt(parts[1], 10, 64)
+			if err == nil && !scope[id] {
+				writeErr(w, 403, "该 skill 不在您设备的可见范围（本机推送 + 分配给本机的 skill）")
+				return
+			}
+		}
+	}
 	switch {
 	case len(parts) == 1 && r.Method == "GET":
+		if !s.gateUserTokenRead(w, r) {
+			return
+		}
 		q := r.URL.Query().Get("q")
 		machine := r.URL.Query().Get("machine")
+		// 设备域：user token 强制以绑定设备为 machine 过滤（可看本机+分配的）
+		if _, role, host := s.principal(r); role == "user" {
+			machine = host
+		}
 		ss, err := s.st.ListSkills(q, machine)
 		if err != nil {
 			writeErr(w, 500, err.Error())
@@ -687,6 +870,19 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(512 << 20); err != nil {
 		writeErr(w, 400, "解析上传失败: "+err.Error())
 		return
+	}
+	// 设备域（PROTOCOL v2.2）：user token 上报的 hostname 必须与绑定一致；未绑定则自动认领锁死
+	if _, role, bound := s.principal(r); role == "user" {
+		if bound == "" {
+			if err := s.st.AdoptTokenHostname(s.tokenOf(r), hostname); err != nil {
+				writeErr(w, 403, err.Error())
+				return
+			}
+			s.rememberHostname(r, hostname)
+		} else if bound != hostname {
+			writeErr(w, 403, "hostname 与 token 绑定设备不符（绑定: "+bound+"）")
+			return
+		}
 	}
 	var bundleFile *multipart.FileHeader
 	for _, headers := range r.MultipartForm.File {
@@ -1183,6 +1379,19 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "需要 hostname")
 		return
 	}
+	// 设备域（PROTOCOL v2.2）：user token 心跳同样受绑定约束并触发认领
+	if _, role, bound := s.principal(r); role == "user" {
+		if bound == "" {
+			if err := s.st.AdoptTokenHostname(s.tokenOf(r), body.Hostname); err != nil {
+				writeErr(w, 403, err.Error())
+				return
+			}
+			s.rememberHostname(r, body.Hostname)
+		} else if bound != body.Hostname {
+			writeErr(w, 403, "hostname 与 token 绑定设备不符（绑定: "+bound+"）")
+			return
+		}
+	}
 	if err := s.st.Heartbeat(body.Hostname); err != nil {
 		writeErr(w, 500, err.Error())
 		return
@@ -1206,6 +1415,16 @@ func (s *Server) handleAssignments(w http.ResponseWriter, r *http.Request, parts
 	// GET /api/assignments?machine=<hostname> — 列某机器分配（user 可读，客户端拉取用）
 	if len(parts) == 1 && r.Method == "GET" {
 		machine := r.URL.Query().Get("machine")
+		// 设备域：user token 只能查自己的分配（缺省自动取绑定设备）
+		if _, role, host := s.principal(r); role == "user" {
+			if machine == "" {
+				machine = host
+			}
+			if machine != host {
+				writeErr(w, 403, "user token 只能查询本机分配")
+				return
+			}
+		}
 		if machine == "" {
 			writeErr(w, 400, "需要 machine")
 			return
@@ -1283,6 +1502,16 @@ func (s *Server) handleDispatches(w http.ResponseWriter, r *http.Request, parts 
 	// GET /api/dispatches?machine=x — 客户端认领 pending 指令（心跳外的补拉通道）
 	case len(parts) == 1 && r.Method == "GET":
 		machine := r.URL.Query().Get("machine")
+		// 设备域：user token 只能认领本机指令
+		if _, role, host := s.principal(r); role == "user" {
+			if machine == "" {
+				machine = host
+			}
+			if machine != host {
+				writeErr(w, 403, "user token 只能认领本机指令")
+				return
+			}
+		}
 		if machine == "" {
 			writeErr(w, 400, "需要 machine")
 			return

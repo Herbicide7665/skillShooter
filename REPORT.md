@@ -241,3 +241,17 @@ skill-hub.exe（单二进制）
 - 旧 X-Token 认证、旧 skillhub.db、glm_* yaml 键、GLM_API_KEY env 全部兼容
 - 已分发的旧内嵌配置二进制不受影响（读自身尾部）；新下载的客户端 marker 换代，旧客户端需重新下载
 - 初始 admin 账号：首启生成随机密码打印在启动日志（仅一次），或 SKILLMANAGER_ADMIN_PASSWORD 指定
+
+
+## 十九、v2.2：user token 设备域 + 客户端配置弹窗（2026-10-16）
+
+| 项 | 落地 |
+|---|---|
+| user token 绑定设备 | tokens 加 hostname 列；首次 push/heartbeat 自动认领锁死；不符 403；admin 设置页改绑/解绑 |
+| 设备域权限 | skills/canonical 按域过滤、machines/assignments/dispatches 限本机、管理视图(stats/graph/families/dup/edges/jobs)纯 user token 403、web user 会话保持全局只读 |
+| token 与 web 分轨确认 | user token 只能跑客户端；web 只认账号会话；whoami 回 role+machine 供配置窗自检 |
+| 客户端配置 | config.json 全量字段；托盘「配置…」Win32 原生弹窗（测试连接/确定自重启）；skillshooter config CLI；首启无配置直接弹窗引导 |
+
+测试：Go 7 用例全绿（新增 TestDeviceScope/TestUserTokenCannotWeb，含认领-锁死-跨设备 403-改绑生效-未绑定拒绝-主 token 不可读）；本机 smoke 平板两阶段验证；**修复掩码反查死锁（grep 时代坑复发）**。
+
+部署：VPS serve+daemon 已换 skillshooter（旧 skillhub.db→skillshooter.db 拷贝迁移，备份留档 bak-20261016-1605）；selfpush.sh cron 已指新二进制并试跑成功（31 skill 推送/0 新增符合增量语义）；web admin 初始密码打印于启动日志（已交付用户）；旧主 token 283b.../vps 心跳在线/LLM 连通全验证通过。

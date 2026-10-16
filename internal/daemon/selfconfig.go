@@ -66,20 +66,6 @@ func SelfConfig() (server, token string, ok bool) {
 	return cfg.Server, cfg.Token, true
 }
 
-// ConfigFilePath 客户端侧配置文件（内嵌配置首次启动时落盘，便于查看/手改）
-func ConfigFilePath() string {
-	home, _ := os.UserHomeDir()
-	return home + string(os.PathSeparator) + ".skillshooter" + string(os.PathSeparator) + "config.json"
-}
-
-// SaveConfigFile 配置落盘
-func SaveConfigFile(server, token string) {
-	cfg, _ := json.MarshalIndent(map[string]string{"server": server, "token": token}, "", "  ")
-	p := ConfigFilePath()
-	os.MkdirAll(dirOf(p), 0o755)
-	os.WriteFile(p, cfg, 0o600)
-}
-
 func dirOf(p string) string {
 	for i := len(p) - 1; i >= 0; i-- {
 		if p[i] == os.PathSeparator {
