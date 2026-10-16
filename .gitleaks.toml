@@ -1,0 +1,21 @@
+# SkillShooter 项目补充规则（在 gitleaks 默认 200+ 规则之上）
+title = "skillshooter gitleaks config"
+
+[[rules]]
+id = "skillshooter-admin-token"
+description = "SkillShooter admin token (hex48+)"
+regex = '''\b[0-9a-f]{48,64}\b'''
+keywords = ["token"]
+
+[[rules]]
+id = "generic-bearer-long"
+description = "Long bearer/authorization literals"
+regex = '''(?i)(bearer|authorization)["'\s:=]{1,4}[A-Za-z0-9\-_.]{32,}'''
+
+[allowlist]
+description = "global allowlists"
+paths = [
+  '''(^|/)go\.sum$''',
+  '''(^|/)\.gitignore$''',
+  '''skillrelay|skillmanager''',
+]
