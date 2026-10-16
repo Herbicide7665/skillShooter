@@ -203,3 +203,16 @@ skill-hub.exe（单二进制）
 4. **增量安全审计**（AUDIT.md 第七章）：提权面 10 场景全部通过（含 token 变体/自我提权/SQL 注入/吊销时效）；whoami 免 token 设计（只回显角色）
 5. **GUI 测试**（TEST-REPORT.md）：web-gui-tester 六页面走查，发现并修复 **BUG-1**（前端无 fetch 重试，代理 502 窗口期页面永久卡死）——api() 加 502/网络重试 + 错误框重试按钮；修复回归后六页全过
 6. 部署注意：VPS 库迁移前备份 skillhub.db.bak-20261014-*；pkill -x 重启；本轮再次验证"二进制字符串搜索不可靠，行为验证才准"
+
+## 十七、协议 v2 迭代：HMAC 签名/心跳/分配/下发/GitHub 私库（2026-10-16，commit ec57c60）
+
+六项已批准需求（2026-10-15 搁置、16 日闲时功能仍未开放后用户改口立即执行）全部落地：
+
+1. **系统 skill 路径分类**：客户端 push/daemon 携带 source_root，服务端 `ClassifySystem`（相对 home 命中 .zcode/.claude 插件缓存前缀→is_system=1，只置1不清0）。**修复三连**：WalkDir 根目录撞 runtimeDirs 名（cache/plugins）整树漏扫——生产 .zcode 插件 skill 此前一直没采到；root=skill 目录时 rel=. 归属失败；`filepath.Rel` 返回反斜杠未规范化致分类恒 false。列表/关系图「隐藏系统 skill」开关默认隐藏（localStorage）。VPS 存量回填实测 118 系统/256 用户
+2. **HMAC 签名认证**（auth.go + pusher/sign.go + app.js 纯 JS SHA-256）：token 不上 wire（X-Key-ID=sha256[:16]），±10min 时间窗+nonce 防重放+X-Body-SHA256 防篡改（覆盖 multipart bundle）；**签名失败不回落明文（防 downgrade）**；无签名头回落 X-Token 兼容旧客户端。负路径实测：重放/篡改/过期全 401。**修复**：handlePush 残留重复 checkToken 拦死签名请求（Python 复现签名定位）。PROTOCOL.md 全量协议文档
+3. **心跳探活**：daemon 30min POST /api/heartbeat（启动即跳一次），>35min 判离线，Dashboard 设备在线表。**修复**：modernc 驱动 Scan DATETIME→string 转成 RFC3339，按 "2006-01-02 15:04:05" 解析恒失败致 online 恒 false——双格式兼容
+4. **分配+下发**：assignments 表（PUT admin/GET user）+ dispatches 表（admin 下发 sync|pull → 心跳响应捎带认领 → result 回执）。客户端三入口：托盘「立即同步/上传全部/下载分配」+ CLI `pull --assigned` / `upload`。后台新「设备」页（在线状态/分配编辑/主动下发/指令历史）。VPS 闭环实测：keydraw 分配→下发→daemon 启动认领→落盘 ~/.agents/skills→回执 done
+5. **审计**（AUDIT.md 第八章）：新增端点 token 门全矩阵、FK 约束兜底、nonce 有界；**git 全历史 7390 行 diff 双模式隐私扫描（GLM key 形态+40+长随机串）零命中**；RSS 复测 serve 17-19MB / daemon 9.8MB（FreeOSMemory 策略未回退）
+6. **GitHub 私库**：Herbicide7665/skill-hub（PAT 经 VPS bw CLI 一条 shell 取回不落盘，push 后即删临时 remote；API+匿名 404 双重确认 private:true）
+
+部署教训（复用）：**pkill -f 'skill-hub daemon' 会匹配同一命令行里重启命令的 daemon 字样自杀**——pkill 与重启必须拆两次 SSH 调用；daemon 的 --token 从 serve.log head 抓取有 race（serve 未写完 token 行→空 token 401），直接用 .token 文件。本机 config.json 曾指向死端口 8799（残留），已修正为 VPS。
