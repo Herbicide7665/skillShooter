@@ -14,3 +14,4 @@ skillshooter-darwin-*
 *.bak
 skillhub.db*
 gui-test-screenshots*
+.push-env
