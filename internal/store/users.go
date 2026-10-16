@@ -84,7 +84,7 @@ func randToken(n int) string {
 // ---- 用户与会话 ----
 
 // EnsureUsers 首次启动（users 空表）创建管理员账号。
-// 返回 (初始密码, 是否新建, err)；密码来源：SKILLMANAGER_ADMIN_PASSWORD env，否则随机生成（仅此一次打印到日志）。
+// 返回 (初始密码, 是否新建, err)；密码来源：SKILLRELAY_ADMIN_PASSWORD env，否则随机生成（仅此一次打印到日志）。
 func (s *Store) EnsureUsers() (string, bool, error) {
 	var n int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&n); err != nil {
@@ -93,7 +93,7 @@ func (s *Store) EnsureUsers() (string, bool, error) {
 	if n > 0 {
 		return "", false, nil
 	}
-	pw := os.Getenv("SKILLMANAGER_ADMIN_PASSWORD")
+	pw := os.Getenv("SKILLRELAY_ADMIN_PASSWORD")
 	if pw == "" {
 		pw = randToken(12)
 	}

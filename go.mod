@@ -1,4 +1,4 @@
-module skill-manager
+module skillrelay
 
 go 1.21
 

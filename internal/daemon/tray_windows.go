@@ -41,8 +41,8 @@ func RunTray(opt Options) error {
 	onExit := func() {}
 	systray.Run(func() {
 		systray.SetIcon(trayIcon)
-		systray.SetTitle("Skill Manager")
-		systray.SetTooltip("Skill Manager 客户端 — " + opt.Hostname)
+		systray.SetTitle("Skill Relay")
+		systray.SetTooltip("Skill Relay 客户端 — " + opt.Hostname)
 		mOpen := systray.AddMenuItem("打开 Hub 页面", "在浏览器打开 "+opt.Server)
 		mSync := systray.AddMenuItem("立即同步", "推送本机变更 + 应用云端合并 + 部署云端分配 skill")
 		mUpload := systray.AddMenuItem("上传本机全部 skill", "强制全量推送所有监控目录（不依赖增量签名）")
@@ -103,7 +103,7 @@ var _ = fmt.Sprintf
 // AlertNoConfig 未配置时弹原生消息框引导
 func AlertNoConfig() {
 	mbox := user32.NewProc("MessageBoxW")
-	title, _ := syscall.UTF16PtrFromString("Skill Manager 客户端")
-	text, _ := syscall.UTF16PtrFromString("此二进制尚未包含接入配置。\n\n请到 Hub 网页「设置 → 一键接入」下载带配置的客户端（双击即用），\n或使用命令行：skill-manager daemon --server URL --token TOKEN --tray")
+	title, _ := syscall.UTF16PtrFromString("Skill Relay 客户端")
+	text, _ := syscall.UTF16PtrFromString("此二进制尚未包含接入配置。\n\n请到 Hub 网页「设置 → 一键接入」下载带配置的客户端（双击即用），\n或使用命令行：skillrelay daemon --server URL --token TOKEN --tray")
 	mbox.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), 0x40)
 }

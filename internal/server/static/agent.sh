@@ -1,5 +1,5 @@
 #!/bin/sh
-# skill-manager 新机器引导：下载二进制到 ~/.skill-manager/ 并全盘收集本机所有 agent 工具的 skill 推送到 hub
+# skillrelay 新机器引导：下载二进制到 ~/.skillrelay/ 并全盘收集本机所有 agent 工具的 skill 推送到 hub
 # 用法: curl -fsSL http://HUB/agent.sh | sh -s -- --server http://HUB --token TOKEN [--hostname 名字] [--paths 额外路径,逗号分隔]
 set -eu
 
@@ -23,29 +23,29 @@ if [ -z "$SERVER" ] || [ -z "$TOKEN" ]; then
   exit 1
 fi
 
-HUBDIR="$HOME/.skill-manager"
+HUBDIR="$HOME/.skillrelay"
 mkdir -p "$HUBDIR"
 
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 BIN=""
-EXE="skill-manager"
+EXE="skillrelay"
 case "$OS" in
   Linux)
     case "$ARCH" in
-      aarch64|arm64) BIN="skill-manager-linux-arm64" ;;
-      *)             BIN="skill-manager-linux-amd64" ;;
+      aarch64|arm64) BIN="skillrelay-linux-arm64" ;;
+      *)             BIN="skillrelay-linux-amd64" ;;
     esac
     ;;
   Darwin)
     case "$ARCH" in
-      arm64) BIN="skill-manager-darwin-arm64" ;;
-      *)     BIN="skill-manager-darwin-amd64" ;;
+      arm64) BIN="skillrelay-darwin-arm64" ;;
+      *)     BIN="skillrelay-darwin-amd64" ;;
     esac
     ;;
   MINGW*|MSYS*|CYGWIN*)
-    BIN="skill-manager.exe"
-    EXE="skill-manager.exe"
+    BIN="skillrelay.exe"
+    EXE="skillrelay.exe"
     ;;
   *)
     echo "不支持的系统: $OS（请手动到 $SERVER/dl/ 下载二进制）" >&2
@@ -59,7 +59,7 @@ if command -v curl >/dev/null 2>&1; then
 else
   wget -q -O "$HUBDIR/$EXE" "$SERVER/dl/$BIN"
 fi
-if [ "$EXE" = "skill-manager" ]; then
+if [ "$EXE" = "skillrelay" ]; then
   chmod +x "$HUBDIR/$EXE"
 fi
 SH="$HUBDIR/$EXE"

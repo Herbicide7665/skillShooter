@@ -1,4 +1,4 @@
-/* Skill Manager SPA */
+/* Skill Relay SPA */
 const $app = document.getElementById('app');
 const $nav = document.querySelectorAll('#navlinks a');
 
@@ -59,7 +59,7 @@ function renderLogin() {
   $app.innerHTML = `
     <div class="login-wrap">
       <div class="panel login-panel">
-        <h2 style="margin-top:0">Skill Manager 登录</h2>
+        <h2 style="margin-top:0">Skill Relay 登录</h2>
         <div class="toolbar" style="flex-direction:column;align-items:stretch;gap:8px">
           <input type="text" id="lguser" placeholder="用户名" autocomplete="username">
           <input type="password" id="lgpass" placeholder="密码" autocomplete="current-password">
@@ -192,7 +192,7 @@ async function pageDashboard() {
       <td><span class="badge b-machine">${esc(r.machine)}</span></td>
       <td><span class="badge b-${r.kind === 'merged' ? 'merged' : 'push'}">${r.kind === 'merged' ? '合并' : '推送'}</span></td>
       <td class="mono small">v${r.version_id}</td>
-    </tr>`).join('') || '<tr><td colspan="5" class="muted">暂无记录，先用 skill-manager push 推送数据</td></tr>'}
+    </tr>`).join('') || '<tr><td colspan="5" class="muted">暂无记录，先用 skillrelay push 推送数据</td></tr>'}
     </tbody></table>`;
   document.getElementById('devbox').innerHTML = `
     <table class="tbl"><thead><tr><th>设备</th><th>状态</th><th>最后活跃</th><th>skill 数</th><th>推送次数</th></tr></thead><tbody>
@@ -555,7 +555,7 @@ async function pageDevices() {
       <p class="small muted" style="margin:6px 0">
         设备每 30 分钟心跳一次（daemon 客户端），超 35 分钟无心跳/推送判离线。
         为设备分配 skill 后，可点「下发部署」让设备在下次心跳（或客户端手动同步）时自动把分配的 skill 拉取落盘到本地 skill 目录。
-        客户端托盘菜单也可主动「立即同步 / 上传本机全部 / 下载云端分配」。命令行：<code class="inline">skill-manager pull --assigned --dest ~/.agents/skills</code>。
+        客户端托盘菜单也可主动「立即同步 / 上传本机全部 / 下载云端分配」。命令行：<code class="inline">skillrelay pull --assigned --dest ~/.agents/skills</code>。
       </p>
     </div>
     <div id="devlist"><div class="loading">加载中…</div></div>
@@ -752,12 +752,12 @@ async function pageSettings() {
     <div class="panel" style="border-left:4px solid var(--accent)">
       <h2 style="margin-top:0">一键接入（免命令行，推荐）</h2>
       <div class="toolbar">
-        <button class="primary" onclick="window._dlClient('skill-manager.exe')">⬇ Windows 客户端（双击即用）</button>
-        <button onclick="window._dlClient('skill-manager')">⬇ Linux 客户端</button>
-        <button onclick="window._dlClient('skill-manager-darwin-arm64')">⬇ macOS (Apple)</button>
-        <button onclick="window._dlClient('skill-manager-darwin-amd64')">⬇ macOS (Intel)</button>
+        <button class="primary" onclick="window._dlClient('skillrelay.exe')">⬇ Windows 客户端（双击即用）</button>
+        <button onclick="window._dlClient('skillrelay')">⬇ Linux 客户端</button>
+        <button onclick="window._dlClient('skillrelay-darwin-arm64')">⬇ macOS (Apple)</button>
+        <button onclick="window._dlClient('skillrelay-darwin-amd64')">⬇ macOS (Intel)</button>
       </div>
-      <p class="small muted">下载的二进制<b>已内嵌本 Hub 地址与接入配置</b>：放到任意目录，Windows 直接双击 — 托盘出现蓝色图标（右键：打开 Hub / 立即同步 / 退出），自动全盘推送本机 skill、增量同步、应用云端合并、接收远程调用。Linux/macOS：<code class="inline">chmod +x skill-manager && ./skill-manager</code>。<b>开机自启</b>：Win+R 输入 <code class="inline">shell:startup</code>，给 exe 创建快捷方式放进去。配置同时落在 <code class="inline">~/.skill-manager/config.json</code> 可查看。</p>
+      <p class="small muted">下载的二进制<b>已内嵌本 Hub 地址与接入配置</b>：放到任意目录，Windows 直接双击 — 托盘出现蓝色图标（右键：打开 Hub / 立即同步 / 退出），自动全盘推送本机 skill、增量同步、应用云端合并、接收远程调用。Linux/macOS：<code class="inline">chmod +x skillrelay && ./skillrelay</code>。<b>开机自启</b>：Win+R 输入 <code class="inline">shell:startup</code>，给 exe 创建快捷方式放进去。配置同时落在 <code class="inline">~/.skillrelay/config.json</code> 可查看。</p>
     </div>` : ''}
     ${admin ? `
     <div class="panel">
@@ -820,7 +820,7 @@ async function pageSettings() {
         <span class="small muted">机器名（留空=自动取主机名）</span>
         <input type="text" id="bsHost" placeholder="如 my-laptop" style="min-width:200px">
       </div>
-      <p class="small muted">在目标机器终端粘贴执行即可：自动下载二进制到 <code class="inline">~/.skill-manager/</code>，<b>全盘收集</b>本机所有 agent 工具的 skill（.agents / .claude / .zcode 插件缓存等，存在的才推）并上传。重复执行安全（幂等）。</p>
+      <p class="small muted">在目标机器终端粘贴执行即可：自动下载二进制到 <code class="inline">~/.skillrelay/</code>，<b>全盘收集</b>本机所有 agent 工具的 skill（.agents / .claude / .zcode 插件缓存等，存在的才推）并上传。重复执行安全（幂等）。</p>
       <b class="small">Linux / macOS / Windows Git Bash（一条命令）</b>
       <div class="toolbar"><input type="text" readonly id="cmdUnix" class="mono" style="min-width:620px"><button onclick="window._copyCmd('cmdUnix')">复制</button></div>
       <b class="small">Windows（PowerShell）</b>
@@ -904,9 +904,9 @@ async function pageSettings() {
       document.getElementById('cmdWin').value =
         "powershell -NoProfile -ExecutionPolicy Bypass -Command \"iwr '" + hub + "/agent.ps1' -OutFile $env:TEMP\\sh-agent.ps1; & $env:TEMP\\sh-agent.ps1 -Server '" + hub + "' -Token '" + s.token + "'" + hnW + '"';
       document.getElementById('cmdPull').value =
-        '~/.skill-manager/skill-manager pull --server ' + hub + ' --token ' + s.token + ' --dest ~/.agents/skills';
+        '~/.skillrelay/skillrelay pull --server ' + hub + ' --token ' + s.token + ' --dest ~/.agents/skills';
       document.getElementById('cmdDaemon').value =
-        'nohup ~/.skill-manager/skill-manager daemon --server ' + hub + ' --token ' + s.token + hnU + ' > ~/.skill-manager/daemon.log 2>&1 &';
+        'nohup ~/.skillrelay/skillrelay daemon --server ' + hub + ' --token ' + s.token + hnU + ' > ~/.skillrelay/daemon.log 2>&1 &';
     };
     buildCmds();
     document.getElementById('bsHost').addEventListener('input', buildCmds);

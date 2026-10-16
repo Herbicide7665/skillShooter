@@ -13,5 +13,5 @@ func RunTray(opt Options) error {
 
 // AlertNoConfig 非 Windows：打印提示
 func AlertNoConfig() {
-	fmt.Println("此二进制尚未包含接入配置。请到 Hub 设置页下载带配置的客户端，或使用: skill-manager daemon --server URL --token TOKEN")
+	fmt.Println("此二进制尚未包含接入配置。请到 Hub 设置页下载带配置的客户端，或使用: skillrelay daemon --server URL --token TOKEN")
 }

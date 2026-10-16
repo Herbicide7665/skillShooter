@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"skill-manager/internal/llm"
-	"skill-manager/internal/store"
+	"skillrelay/internal/llm"
+	"skillrelay/internal/store"
 )
 
 // 家族：由 GLM 按【实际功能与内容】聚类（命名相似仅作线索，功能相同才成族）。

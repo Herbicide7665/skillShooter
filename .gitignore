@@ -1,11 +1,11 @@
-skillmanager.db*
+skillrelay.db*
 config.yaml
 *.log
 .token
-skill-manager.exe
-skill-manager
-skill-manager-linux-*
-skill-manager-darwin-*
+skillrelay.exe
+skillrelay
+skillrelay-linux-*
+skillrelay-darwin-*
 .shots/
 .e2e*
 .reg*

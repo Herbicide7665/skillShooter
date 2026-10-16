@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"skill-manager/internal/llm"
-	"skill-manager/internal/store"
+	"skillrelay/internal/llm"
+	"skillrelay/internal/store"
 )
 
 // ScanReferenceEdges 解析各 SKILL.md 正文/描述中对库内其他 skill 名字的引用，建引用边
