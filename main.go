@@ -82,6 +82,8 @@ func main() {
 		cmdServe(os.Args[2:])
 	case "push":
 		cmdPush(os.Args[2:])
+	case "upload":
+		cmdPush(os.Args[2:])
 	case "pull":
 		cmdPull(os.Args[2:])
 	case "daemon":
@@ -103,12 +105,15 @@ func usage() {
       启动 web 服务（数据与 config.yaml 就在二进制同目录；启动日志含接入 token）
   skill-hub push --server URL --token TOKEN --path <目录> [--hostname 名字]
       递归扫描目录下所有含 SKILL.md 的子目录并上传
-  skill-hub pull --server URL --token TOKEN --dest <目录> [--machine 名字] [--overwrite]
+  skill-hub pull --server URL --token TOKEN --dest <目录> [--machine 名字] [--overwrite] [--assigned]
       把 hub 上全部（或某机器的）skill 最新版本拉回本地（合并成果分发）
+      --assigned: 只拉"分配给本机"的 skill 集合（--machine 填本机名，落盘 --dest）
+  skill-hub upload --server URL --token TOKEN --path <目录> [--hostname 名字]
+      上传本地 skill 到后台（等价 push，语义化别名）
   skill-hub daemon --server URL --token TOKEN [--hostname 名字] [选项]
-      常驻客户端：增量监控本机 agent 目录推送 + 应用云端合并结果 + 接收远程 skill 调用
-      选项: --interval 30  --apply-interval 300  --job-poll 5  --roots 路径1,路径2
-            --no-watch / --no-apply / --no-jobs
+      常驻客户端：增量监控本机 agent 目录推送 + 应用云端合并结果 + 部署分配 skill + 心跳探活 + 接收远程 skill 调用
+      选项: --interval 30  --apply-interval 300  --job-poll 5  --heartbeat 1800  --roots 路径1,路径2
+            --no-watch / --no-apply / --no-jobs / --no-heartbeat
 `)
 }
 
@@ -196,8 +201,24 @@ func cmdPull(args []string) {
 	dest := fs.String("dest", "", "拉取落盘目录（如 ~/.agents/skills）")
 	machine := fs.String("machine", "", "只拉某台机器的版本（空=全部，同名多机自动加 @machine 后缀）")
 	overwrite := fs.Bool("overwrite", false, "覆盖已存在的 skill 目录")
+	assigned := fs.Bool("assigned", false, "只拉分配给本机的 skill 集合（--machine 填本机名）")
 	fs.Parse(args)
 
+	if *assigned {
+		hn := *machine
+		if hn == "" {
+			hn, _ = os.Hostname()
+		}
+		opt := pusher.PullOptions{Server: *serverURL, Token: *token, Dest: *dest, Machine: hn}
+		start := time.Now()
+		out, err := pusher.PullAssigned(opt)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "pull --assigned 失败: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("pull --assigned 完成 (%.1fs): %s\n", time.Since(start).Seconds(), out)
+		return
+	}
 	opt := pusher.PullOptions{Server: *serverURL, Token: *token, Dest: *dest,
 		Machine: *machine, Overwrite: *overwrite}
 	start := time.Now()
@@ -217,10 +238,12 @@ func cmdDaemon(args []string) {
 	interval := fs.Int("interval", 30, "监控轮询间隔秒")
 	applyInterval := fs.Int("apply-interval", 300, "应用云端合并结果间隔秒")
 	jobPoll := fs.Int("job-poll", 5, "远程任务轮询间隔秒")
+	heartbeat := fs.Int("heartbeat", 1800, "心跳探活间隔秒（30min）")
 	roots := fs.String("roots", "", "监控目录（逗号分隔；留空=自动发现 .agents/.claude/.zcode，指定则只监控这些）")
 	noWatch := fs.Bool("no-watch", false, "关闭监控推送")
 	noApply := fs.Bool("no-apply", false, "关闭应用云端结果")
 	noJobs := fs.Bool("no-jobs", false, "关闭远程任务执行")
+	noHB := fs.Bool("no-heartbeat", false, "关闭心跳探活")
 	tray := fs.Bool("tray", false, "Windows 托盘模式（隐藏窗口）")
 	maxFileMB := fs.Int("max-file-mb", 10, "单文件上限(MB)")
 	maxSkillMB := fs.Int("max-skill-mb", 50, "单skill总量预算(MB)")
@@ -237,7 +260,8 @@ func cmdDaemon(args []string) {
 	opt := daemon.Options{
 		Server: *serverURL, Token: *token, Hostname: hn,
 		Interval: *interval, ApplyInterval: *applyInterval, JobPollSec: *jobPoll,
-		Roots: extraRoots, NoWatch: *noWatch, NoApply: *noApply, NoJobs: *noJobs,
+		HeartbeatSec: *heartbeat,
+		Roots: extraRoots, NoWatch: *noWatch, NoApply: *noApply, NoJobs: *noJobs, NoHeartbeat: *noHB,
 		PushOpt: pusher.Options{
 			MaxFileBytes:  int64(*maxFileMB) * 1024 * 1024,
 			MaxSkillBytes: int64(*maxSkillMB) * 1024 * 1024,

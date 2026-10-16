@@ -15,6 +15,70 @@ function toast(msg, isErr) {
   t._timer = setTimeout(() => t.classList.add('hidden'), 4000);
 }
 function getToken() { return localStorage.getItem('skhub_token') || ''; }
+
+/* ---- 纯 JS SHA-256/HMAC：hub 是 http 非 secure context，crypto.subtle 不可用 ---- */
+const _K = new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
+function rotr(x, n) { return (x >>> n) | (x << (32 - n)); }
+function sha256Bytes(bytes) {
+  const H = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+  const l = bytes.length, total = Math.ceil((l + 9) / 64) * 64;
+  const buf = new Uint8Array(total);
+  buf.set(bytes); buf[l] = 0x80;
+  const dv = new DataView(buf.buffer);
+  dv.setUint32(total - 8, Math.floor(l * 8 / 4294967296));
+  dv.setUint32(total - 4, (l * 8) >>> 0);
+  const w = new Uint32Array(64);
+  for (let i = 0; i < total; i += 64) {
+    for (let j = 0; j < 16; j++) w[j] = dv.getUint32(i + j * 4);
+    for (let j = 16; j < 64; j++) {
+      const s0 = rotr(w[j-15],7) ^ rotr(w[j-15],18) ^ (w[j-15] >>> 3);
+      const s1 = rotr(w[j-2],17) ^ rotr(w[j-2],19) ^ (w[j-2] >>> 10);
+      w[j] = (w[j-16] + s0 + w[j-7] + s1) >>> 0;
+    }
+    let a=H[0],b=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],h=H[7];
+    for (let j = 0; j < 64; j++) {
+      const S1 = rotr(e,6) ^ rotr(e,11) ^ rotr(e,25);
+      const ch = (e & f) ^ (~e & g);
+      const t1 = (h + S1 + ch + _K[j] + w[j]) >>> 0;
+      const S0 = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const t2 = (S0 + maj) >>> 0;
+      h=g; g=f; f=e; e=(d+t1)>>>0; d=c; c=b; b=a; a=(t1+t2)>>>0;
+    }
+    H[0]=(H[0]+a)>>>0; H[1]=(H[1]+b)>>>0; H[2]=(H[2]+c)>>>0; H[3]=(H[3]+d)>>>0;
+    H[4]=(H[4]+e)>>>0; H[5]=(H[5]+f)>>>0; H[6]=(H[6]+g)>>>0; H[7]=(H[7]+h)>>>0;
+  }
+  const out = new Uint8Array(32), odv = new DataView(out.buffer);
+  for (let i = 0; i < 8; i++) odv.setUint32(i * 4, H[i]);
+  return out;
+}
+function concatBytes(a, b) { const o = new Uint8Array(a.length + b.length); o.set(a); o.set(b, a.length); return o; }
+function hmacSha256(keyBytes, msgBytes) {
+  let k = keyBytes;
+  if (k.length > 64) k = sha256Bytes(k);
+  const kp = new Uint8Array(64); kp.set(k);
+  const oKey = new Uint8Array(64), iKey = new Uint8Array(64);
+  for (let i = 0; i < 64; i++) { oKey[i] = kp[i] ^ 0x5c; iKey[i] = kp[i] ^ 0x36; }
+  return sha256Bytes(concatBytes(oKey, sha256Bytes(concatBytes(iKey, msgBytes))));
+}
+function bytesToHex(b) { return Array.from(b).map(x => x.toString(16).padStart(2, '0')).join(''); }
+const utf8Bytes = s => new TextEncoder().encode(s);
+
+/* ---- HMAC 请求签名（token 不上 wire，见 PROTOCOL.md）---- */
+function signHeaders(method, pathWithQuery, bodyStr) {
+  const token = getToken();
+  if (!token) return {};
+  const ts = Math.floor(Date.now() / 1000).toString();
+  const nonce = bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
+  const bodySHA = bytesToHex(sha256Bytes(utf8Bytes(bodyStr || '')));
+  const signStr = [method, pathWithQuery, ts, nonce, bodySHA].join('\n');
+  const sign = bytesToHex(hmacSha256(utf8Bytes(token), utf8Bytes(signStr)));
+  return {
+    'X-Key-ID': bytesToHex(sha256Bytes(utf8Bytes(token))).slice(0, 16),
+    'X-Timestamp': ts, 'X-Nonce': nonce, 'X-Body-SHA256': bodySHA, 'X-Sign': sign,
+  };
+}
+
 async function askToken() {
   const t = prompt('访问 Skill Hub 需要接入 Token（见服务端启动日志 serve.log 或 skillhub.db 所在机器）');
   if (t && t.trim()) {
@@ -30,7 +94,8 @@ function authHeaders(extra) {
 }
 async function api(path, opts) {
   opts = opts || {};
-  opts.headers = authHeaders(opts.headers);
+  const method = (opts.method || 'GET').toUpperCase();
+  opts.headers = Object.assign({}, opts.headers || {}, signHeaders(method, '/api' + path, opts.body || ''));
   // 502/网络抖动自动重试（指数退避）：上游代理/网络瞬断时不至于整页卡死
   let r;
   for (let attempt = 0; ; attempt++) {
@@ -61,12 +126,20 @@ async function apiPost(path, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
 }
+async function apiPut(path, body) {
+  return api(path, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
 // 带 token 的原始文件请求（正文/下载）
 async function authFetch(url) {
-  let r = await fetch(url, {headers: authHeaders()});
+  const path = url.startsWith('/api') ? url : '/api' + url;
+  let r = await fetch(url, {headers: signHeaders('GET', path, '')});
   if (r.status === 401) {
     const t = await askToken();
-    if (t) r = await fetch(url, {headers: authHeaders()});
+    if (t) r = await fetch(url, {headers: signHeaders('GET', path, '')});
   }
   return r;
 }
@@ -97,7 +170,7 @@ function route() {
   $nav.forEach(a => a.classList.toggle('active', a.dataset.r === page || (page === 'skill' && a.dataset.r === 'skills')));
   const routes = {
     dashboard: pageDashboard, skills: pageSkills, skill: pageSkillDetail,
-    graph: pageGraph, dedup: pageDedup, jobs: pageJobs, settings: pageSettings,
+    graph: pageGraph, dedup: pageDedup, devices: pageDevices, jobs: pageJobs, settings: pageSettings,
   };
   (routes[page] || pageDashboard)(rest).catch(e => {
     $app.innerHTML = `<div class="panel" style="color:var(--danger)">加载失败: ${esc(e.message)}
@@ -110,6 +183,7 @@ window.addEventListener('hashchange', route);
 async function pageDashboard() {
   $app.innerHTML = '<div class="loading">加载中…</div>';
   const st = await api('/stats');
+  const machines = await api('/machines');
   $app.innerHTML = `
     <h1>总览</h1>
     <div class="cards">
@@ -124,6 +198,8 @@ async function pageDashboard() {
     <div class="panel" style="display:flex;gap:8px;flex-wrap:wrap" id="famchips">
       ${(await api('/families')).slice(0, 10).map(f => `<a href="#" class="famchip" onclick="sessionStorage.setItem('famPreselect','${esc(f.kind + ':' + esc(f.key))}');location.hash='#/skills';return false"><b>${esc(f.key)}</b> <span class="muted">${f.names.length} 个</span></a>`).join('') || '<span class="muted small">尚未生成。到「关系图」页点「更新关系」，GLM 会按内容聚类并固化。</span>'}
     </div>
+    <h2>设备在线状态（30min 心跳探活，超 35min 判离线）</h2>
+    <div id="devbox"><div class="loading">加载中…</div></div>
     <h2>最近变更流</h2>
     <table class="tbl"><thead><tr><th>时间</th><th>Skill</th><th>来源机器</th><th>类型</th><th>版本</th></tr></thead><tbody>
     ${st.recent.map(r => `<tr>
@@ -134,6 +210,17 @@ async function pageDashboard() {
       <td class="mono small">v${r.version_id}</td>
     </tr>`).join('') || '<tr><td colspan="5" class="muted">暂无记录，先用 skill-hub push 推送数据</td></tr>'}
     </tbody></table>`;
+  document.getElementById('devbox').innerHTML = `
+    <table class="tbl"><thead><tr><th>设备</th><th>状态</th><th>最后活跃</th><th>skill 数</th><th>推送次数</th></tr></thead><tbody>
+    ${machines.map(m => `<tr>
+      <td><b>${esc(m.hostname)}</b></td>
+      <td><span class="badge ${m.online ? 'b-push' : 'b-exact'}">${m.online ? '● 在线' : '○ 离线'}</span></td>
+      <td class="muted small">${esc(fmtTime(m.last_seen))}</td>
+      <td>${m.skill_count}</td>
+      <td>${m.push_count}</td>
+    </tr>`).join('') || '<tr><td colspan="5" class="muted">尚无设备接入</td></tr>'}
+    </tbody></table>
+    <p class="muted small">管理分配与主动下发请到 <a href="#/devices">设备页</a>。</p>`;
 }
 
 /* ---------- Skills 列表 ---------- */
@@ -194,7 +281,7 @@ async function pageSkills() {
       </tbody></table>`;
   };
   const hs = document.getElementById('hidesys'), hd = document.getElementById('hidedup');
-  hs.checked = localStorage.getItem('skhub_hidesys') === '1';
+  hs.checked = localStorage.getItem('skhub_hidesys') !== '0'; // 默认隐藏系统 skill
   hd.checked = localStorage.getItem('skhub_hidedup') === '1';
   hs.addEventListener('change', () => { localStorage.setItem('skhub_hidesys', hs.checked ? '1' : '0'); load(); });
   hd.addEventListener('change', () => { localStorage.setItem('skhub_hidedup', hd.checked ? '1' : '0'); load(); });
@@ -334,6 +421,7 @@ async function pageGraph() {
     <h1>关系图</h1>
     <div class="toolbar">
       <button class="primary" id="rescan">更新关系（引用边 + GLM 关系/家族重构，固化）</button>
+      <label class="small" style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="ghidesys"> 隐藏系统 skill</label>
       <span class="muted small" id="gstat"></span>
     </div>
     <div class="legend">
@@ -347,12 +435,26 @@ async function pageGraph() {
     <p class="muted small">节点 = skill（颜色=所属家族，大小随版本数），点图例聚焦家族，双击节点跳详情，可拖拽缩放。展示的为上次固化结果。</p>`;
   document.getElementById('gstat').textContent = `${g.skills.length} 节点 / ${g.edges.length} 边`;
 
+  const gh = document.getElementById('ghidesys');
+  gh.checked = localStorage.getItem('skhub_graph_hidesys') !== '0'; // 默认隐藏系统 skill
+  const viewData = () => {
+    if (!gh.checked) return g;
+    const sysIDs = new Set(g.skills.filter(s => s.is_system).map(s => s.id));
+    if (!sysIDs.size) return g;
+    return {
+      skills: g.skills.filter(s => !s.is_system),
+      edges: g.edges.filter(e => !sysIDs.has(e.src_id) && !sysIDs.has(e.dst_id)),
+    };
+  };
+
   const draw = () => {
     if (typeof vis === 'undefined') {
       document.getElementById('graphbox').innerHTML = '<div class="loading" style="padding-top:280px">vis-network CDN 加载失败，检查网络后刷新</div>';
       return;
     }
-    const nodes = new vis.DataSet(g.skills.map(s => {
+    const gv = viewData();
+    document.getElementById('gstat').textContent = `${gv.skills.length} 节点 / ${gv.edges.length} 边${gh.checked && g.skills.length !== gv.skills.length ? `（已隐藏 ${g.skills.length - gv.skills.length} 个系统 skill）` : ''}`;
+    const nodes = new vis.DataSet(gv.skills.map(s => {
       const fc = nameFam[s.name] || '#7ba7e0';
       return ({
       id: s.id, label: s.name, title: esc(`${s.name}\n${s.machine} · ${s.version_count} 版本\n${(s.description || '').slice(0, 100)}`), // vis title 按 HTML 渲染必须转义
@@ -363,7 +465,7 @@ async function pageGraph() {
     }));
     const colorMap = { reference: '#148a4c', related: '#3565e0', chain: '#8b5cf6' };
     const dashMap = { reference: false, related: true, chain: false };
-    const edges = new vis.DataSet(g.edges.map(e => ({
+    const edges = new vis.DataSet(gv.edges.map(e => ({
       from: e.src_id, to: e.dst_id,
       color: { color: colorMap[e.kind] || '#999' },
       dashes: dashMap[e.kind] || false,
@@ -382,13 +484,18 @@ async function pageGraph() {
     window._net = net;
   };
   draw();
+  gh.addEventListener('change', () => {
+    localStorage.setItem('skhub_graph_hidesys', gh.checked ? '1' : '0');
+    draw();
+  });
   document.querySelectorAll('.famchip[data-fk]').forEach(chip => {
     chip.onclick = ev => {
       ev.preventDefault();
       const fam = families.find(f => f.kind + ':' + f.key === chip.dataset.fk);
       if (!fam || typeof vis === 'undefined' || !window._net) return;
       const names = new Set(fam.names);
-      const ids = g.skills.filter(s => names.has(s.name)).map(s => s.id);
+      const gv = viewData();
+      const ids = gv.skills.filter(s => names.has(s.name)).map(s => s.id);
       const net = window._net;
       if (chip.classList.contains('on')) {
         net.unselectAll(); chip.classList.remove('on'); net.fit({ animation: true });
@@ -396,7 +503,7 @@ async function pageGraph() {
         document.querySelectorAll('.famchip.on').forEach(c => c.classList.remove('on'));
         chip.classList.add('on');
         net.selectNodes(ids, { highlightEdges: false });
-        net.fit({ nodes: ids });
+        if (ids.length) net.fit({ nodes: ids });
       }
     };
   });
@@ -416,6 +523,100 @@ async function pageGraph() {
       pageGraph();
     } catch (e) { toast(e.message, true); }
     btn.disabled = false; btn.textContent = '更新关系（引用边 + GLM 关系/家族重构，固化）';
+  };
+}
+
+/* ---------- 设备管理 ---------- */
+async function pageDevices() {
+  $app.innerHTML = '<div class="loading">加载中…</div>';
+  const [machines, allSkills, dispatches] = await Promise.all([
+    api('/machines'), api('/skills'), api('/dispatches/list').catch(() => []),
+  ]);
+  // 按 (name, machine) 去重出可选 skill 实体
+  const uniqueSkills = [];
+  const seen = new Set();
+  for (const s of allSkills) {
+    const k = s.name + '@' + s.machine;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    uniqueSkills.push(s);
+  }
+  $app.innerHTML = `
+    <h1>设备管理</h1>
+    <div class="panel" style="border-left:4px solid var(--accent)">
+      <b class="small">说明</b>
+      <p class="small muted" style="margin:6px 0">
+        设备每 30 分钟心跳一次（daemon 客户端），超 35 分钟无心跳/推送判离线。
+        为设备分配 skill 后，可点「下发部署」让设备在下次心跳（或客户端手动同步）时自动把分配的 skill 拉取落盘到本地 skill 目录。
+        客户端托盘菜单也可主动「立即同步 / 上传本机全部 / 下载云端分配」。命令行：<code class="inline">skill-hub pull --assigned --dest ~/.agents/skills</code>。
+      </p>
+    </div>
+    <div id="devlist"><div class="loading">加载中…</div></div>
+    <h2>下发指令历史（最近 50 条）</h2>
+    <table class="tbl"><thead><tr><th>#</th><th>设备</th><th>动作</th><th>状态</th><th>结果</th><th>创建</th><th>完成</th></tr></thead>
+    <tbody>
+    ${(dispatches || []).map(d => `<tr>
+      <td>#${d.id}</td><td><span class="badge b-machine">${esc(d.machine)}</span></td>
+      <td>${d.action === 'sync' ? '同步（推送+合并+部署）' : '拉取部署'}</td>
+      <td><span class="badge b-${d.status === 'done' ? 'push' : d.status === 'pending' ? 'open' : d.status === 'running' ? 'machine' : 'exact'}">${esc(d.status)}</span></td>
+      <td class="small muted" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(d.result)}">${esc(d.result || '—')}</td>
+      <td class="muted small">${esc(fmtTime(d.created_at))}</td>
+      <td class="muted small">${esc(fmtTime(d.finished_at))}</td>
+    </tr>`).join('') || '<tr><td colspan="7" class="muted">暂无指令。在设备卡片上点「下发部署」开始。</td></tr>'}
+    </tbody></table>`;
+  const box = document.getElementById('devlist');
+  box.innerHTML = machines.map(m => `
+    <div class="panel" data-host="${esc(m.hostname)}">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <b>${esc(m.hostname)}</b>
+        <span class="badge ${m.online ? 'b-push' : 'b-exact'}">${m.online ? '● 在线' : '○ 离线'}</span>
+        <span class="muted small">最后活跃 ${esc(fmtTime(m.last_seen))} · ${m.skill_count} 个 skill · ${m.push_count} 次推送</span>
+        <span style="flex:1"></span>
+        <button class="primary" onclick="window._dispatch('${esc(m.hostname)}','sync')">⬇ 下发部署（同步+部署分配 skill）</button>
+        <button onclick="window._dispatch('${esc(m.hostname)}','pull')">仅部署分配 skill</button>
+        <button onclick="window._editAssign('${esc(m.hostname)}')">分配 skill…</button>
+      </div>
+      <div class="assign-zone" id="az-${esc(m.hostname)}"></div>
+    </div>`).join('') || '<div class="panel muted">尚无设备接入。新机器接入命令见「设置」页。</div>';
+
+  window._dispatch = async (host, action) => {
+    try {
+      const r = await apiPost('/dispatches', {machine: host, action});
+      toast(`已下发指令 #${r.id}（${action}）——设备将在下次心跳（≤30min）执行；客户端也可点托盘「立即同步」即时执行`);
+      setTimeout(() => pageDevices(), 800);
+    } catch (e) { toast(e.message, true); }
+  };
+
+  window._editAssign = async host => {
+    const zone = document.getElementById('az-' + host);
+    if (zone.innerHTML) { zone.innerHTML = ''; return; }
+    zone.innerHTML = '<div class="loading">加载分配…</div>';
+    let assigned = [];
+    try { assigned = await api('/assignments?machine=' + encodeURIComponent(host)); } catch (e) {}
+    const assignedIDs = new Set(assigned.map(s => s.id));
+    zone.innerHTML = `
+      <div style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px">
+        <b class="small">分配给 ${esc(host)} 的 skill（勾选后保存；部署时覆盖落盘到设备 skill 目录）</b>
+        <div style="max-height:260px;overflow:auto;margin:8px 0;border:1px solid var(--line);border-radius:8px;padding:8px">
+          ${uniqueSkills.map(s => `<label class="small" style="display:block;padding:2px 0">
+            <input type="checkbox" class="assign-ck" data-id="${s.id}" ${assignedIDs.has(s.id) ? 'checked' : ''}>
+            <b>${esc(s.name)}</b> <span class="badge b-machine">${esc(s.machine)}</span>
+            <span class="muted">${esc((s.description || '').slice(0, 60))}</span></label>`).join('') || '<span class="muted">hub 上无 skill</span>'}
+        </div>
+        <div class="toolbar">
+          <button class="primary" onclick="window._saveAssign('${esc(host)}')">保存分配</button>
+          <span class="muted small" id="asgmsg-${esc(host)}"></span>
+        </div>
+      </div>`;
+  };
+
+  window._saveAssign = async host => {
+    const ids = [...document.querySelectorAll(`#az-${CSS.escape(host)} .assign-ck:checked`)].map(ck => +ck.dataset.id);
+    try {
+      const r = await apiPut('/assignments/' + encodeURIComponent(host), {skill_ids: ids});
+      document.getElementById('asgmsg-' + host).textContent = `已保存 ${r.count} 个分配`;
+      toast(`已保存 ${host} 的 ${r.count} 个 skill 分配`);
+    } catch (e) { toast(e.message, true); }
   };
 }
 
@@ -642,7 +843,7 @@ async function pageSettings() {
   window._dlClient = async name => {
     try {
       toast('正在生成已配置客户端…');
-      const r = await fetch('/api/client/' + name, { headers: authHeaders() });
+      const r = await fetch('/api/client/' + name, {headers: signHeaders('GET', '/api/client/' + name, '')});
       if (r.status === 401) { const t = await askToken(); if (!t) return; return window._dlClient(name); }
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const blob = await r.blob();

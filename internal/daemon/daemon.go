@@ -26,20 +26,30 @@ type Options struct {
 	Interval      int // 监控轮询秒
 	ApplyInterval int // 应用云端结果间隔秒
 	JobPollSec    int // 任务轮询秒
+	HeartbeatSec  int // 心跳探活秒（默认 1800）
 	Roots         []string
 	NoWatch       bool
 	NoApply       bool
 	NoJobs        bool
+	NoHeartbeat   bool
 	PushOpt       pusher.Options
 	Stop          chan struct{} // 托盘退出信号
-	SyncNow       chan struct{} // 托盘"立即同步"信号
+	SyncNow       chan struct{} // 托盘"立即同步"信号（推送变更+应用合并+部署分配）
+	UploadAll     chan struct{} // 托盘"上传全部"信号（强制全量推送）
+	PullAssigned  chan struct{} // 托盘"拉取分配"信号
 }
 
 type hubJob struct {
+	ID      int64  `json:"id"`
+	Machine string `json:"machine"`
+	Skill   string `json:"skill"`
+	Prompt  string `json:"prompt"`
+}
+
+type hubDispatch struct {
 	ID     int64  `json:"id"`
 	Machine string `json:"machine"`
-	Skill  string `json:"skill"`
-	Prompt string `json:"prompt"`
+	Action string `json:"action"`
 }
 
 type canonEntry struct {
@@ -130,24 +140,25 @@ func Run(opt Options) error {
 	if opt.JobPollSec <= 0 {
 		opt.JobPollSec = 5
 	}
-	log("启动 server=%s hostname=%s roots=%v watch=%vs apply=%vs jobs=%vs",
-		opt.Server, opt.Hostname, opt.Roots, opt.Interval, opt.ApplyInterval, opt.JobPollSec)
+	if opt.HeartbeatSec <= 0 {
+		opt.HeartbeatSec = 1800 // 30min
+	}
+	log("启动 server=%s hostname=%s roots=%v watch=%vs apply=%vs jobs=%vs hb=%vs",
+		opt.Server, opt.Hostname, opt.Roots, opt.Interval, opt.ApplyInterval, opt.JobPollSec, opt.HeartbeatSec)
 
 	// 启动时做一次全量推送（注册机器 + 基线）
-	for _, root := range opt.Roots {
-		po := opt.PushOpt
-		po.Server, po.Token, po.Path, po.Hostname = opt.Server, opt.Token, root, opt.Hostname
-		if out, err := pusher.Push(po); err != nil {
-			log("初始推送 %s 失败: %v", root, err)
-		} else {
-			log("初始推送 %s: %s", root, strings.SplitN(out, "\"count\"", 2)[0]+trimCount(out))
-		}
-	}
+	pushAllRoots(opt)
 	debug.FreeOSMemory() // 全量收集峰值内存立即归还 OS
+
+	// 启动即心跳：注册在线状态并立刻认领后台积压的下发指令（不等首个 30min ticker）
+	if !opt.NoHeartbeat {
+		heartbeatOnce(opt)
+	}
 
 	watchTick := time.NewTicker(time.Duration(opt.Interval) * time.Second)
 	applyTick := time.NewTicker(time.Duration(opt.ApplyInterval) * time.Second)
 	jobTick := time.NewTicker(time.Duration(opt.JobPollSec) * time.Second)
+	hbTick := time.NewTicker(time.Duration(opt.HeartbeatSec) * time.Second)
 	for {
 		select {
 		case <-watchTick.C:
@@ -162,19 +173,116 @@ func Run(opt Options) error {
 			if !opt.NoJobs {
 				jobOnce(opt)
 			}
+		case <-hbTick.C:
+			if !opt.NoHeartbeat {
+				heartbeatOnce(opt)
+			}
 		case <-opt.SyncNow:
 			log("手动触发同步")
-			if !opt.NoWatch {
-				watchOnce(opt)
-			}
-			if !opt.NoApply {
-				applyOnce(opt)
-			}
+			doSync(opt)
+		case <-opt.UploadAll:
+			log("手动上传全部本机 skill")
+			pushAllRoots(opt)
+			debug.FreeOSMemory()
+		case <-opt.PullAssigned:
+			log("手动拉取云端分配 skill")
+			pullAssignedOnce(opt)
 		case <-opt.Stop:
 			log("收到退出信号，客户端停止")
 			return nil
 		}
 	}
+}
+
+// pushAllRoots 全量推送所有监控根（启动基线/手动上传）
+func pushAllRoots(opt Options) {
+	for _, root := range opt.Roots {
+		po := opt.PushOpt
+		po.Server, po.Token, po.Path, po.Hostname = opt.Server, opt.Token, root, opt.Hostname
+		if out, err := pusher.Push(po); err != nil {
+			log("全量推送 %s 失败: %v", root, err)
+		} else {
+			log("全量推送 %s: %s", root, strings.SplitN(out, "\"count\"", 2)[0]+trimCount(out))
+		}
+	}
+}
+
+// doSync 完整同步：推送变更 → 应用云端合并 → 部署云端分配
+func doSync(opt Options) {
+	if !opt.NoWatch {
+		watchOnce(opt)
+	}
+	if !opt.NoApply {
+		applyOnce(opt)
+	}
+	pullAssignedOnce(opt)
+}
+
+// heartbeatOnce 心跳探活：上报存活并捎带认领后台下发的指令
+func heartbeatOnce(opt Options) {
+	var resp struct {
+		OK         bool          `json:"ok"`
+		ServerTime string        `json:"server_time"`
+		Dispatches []hubDispatch `json:"dispatches"`
+	}
+	if err := apiPost(opt, "/api/heartbeat", map[string]string{"hostname": opt.Hostname}, &resp); err != nil {
+		log("心跳失败: %v", err)
+		return
+	}
+	for _, d := range resp.Dispatches {
+		log("认领下发指令 #%d action=%s", d.ID, d.Action)
+		status, detail := runDispatch(opt, d.Action)
+		if err := apiPost(opt, fmt.Sprintf("/api/dispatches/%d/result", d.ID),
+			map[string]string{"status": status, "result": detail}, nil); err != nil {
+			log("回执指令 #%d 失败: %v", d.ID, err)
+		}
+		log("指令 #%d 完成 status=%s", d.ID, status)
+	}
+}
+
+// runDispatch 执行一条下发指令
+func runDispatch(opt Options, action string) (status, detail string) {
+	switch action {
+	case "pull":
+		return pullAssignedStatus(opt)
+	default: // sync
+		doSync(opt)
+		return "done", "同步完成（推送变更+应用合并+部署分配）"
+	}
+}
+
+// assignedDest 分配 skill 的落盘目录：第一个用户级 skill 根（非插件缓存）
+func assignedDest(opt Options) string {
+	for _, root := range opt.Roots {
+		norm := strings.ToLower(filepath.ToSlash(root))
+		if strings.Contains(norm, "/plugins/") || strings.Contains(norm, "plugins/cache") {
+			continue
+		}
+		return root
+	}
+	if len(opt.Roots) > 0 {
+		return opt.Roots[0]
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".agents", "skills")
+}
+
+// pullAssignedOnce 拉取云端分配给本机的 skill 并落盘
+func pullAssignedOnce(opt Options) {
+	if _, detail := pullAssignedStatus(opt); detail != "" {
+		log("%s", detail)
+	}
+}
+
+func pullAssignedStatus(opt Options) (status, detail string) {
+	out, err := pusher.PullAssigned(pusher.PullOptions{
+		Server: opt.Server, Token: opt.Token,
+		Dest: assignedDest(opt), Machine: opt.Hostname,
+	})
+	if err != nil {
+		return "failed", fmt.Sprintf("拉取分配失败: %v", err)
+	}
+	return "done", out
 }
 
 func trimCount(out string) string {
@@ -209,7 +317,7 @@ func watchOnce(opt Options) {
 			changed[dirRel] = files
 		}
 		if len(changed) > 0 {
-			out, err := pusher.UploadBundle(opt.Server, opt.Token, opt.Hostname, changed)
+			out, err := pusher.UploadBundle(opt.Server, opt.Token, opt.Hostname, root, changed)
 			if err != nil {
 				log("增量推送 %d 个失败: %v", len(changed), err)
 				continue
@@ -392,10 +500,10 @@ func executeJob(opt Options, job *hubJob) (status, cli string, report map[string
 	return "ok", cli, report
 }
 
-// ---- hub API 小封装 ----
+// ---- hub API 小封装（全部走 HMAC 签名，token 不上 wire）----
 
 func (o Options) headers(req *http.Request) {
-	req.Header.Set("X-Token", o.Token)
+	pusher.AddAuth(req, o.Token, nil)
 }
 
 func apiGet(opt Options, path string, dst interface{}) error {
@@ -420,7 +528,7 @@ func apiPost(opt Options, path string, body interface{}, dst interface{}) error 
 	bj, _ := json.Marshal(body)
 	req, _ := http.NewRequest("POST", strings.TrimRight(opt.Server, "/")+path, bytes.NewReader(bj))
 	req.Header.Set("Content-Type", "application/json")
-	opt.headers(req)
+	pusher.AddAuth(req, opt.Token, bj) // JSON body 必须参与签名
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
 	if err != nil {
 		return err

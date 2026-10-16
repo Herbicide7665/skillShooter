@@ -61,6 +61,8 @@ var runtimeExts = map[string]bool{".log": true, ".tmp": true}
 
 // ScanSkills 递归扫描 root 下所有含 SKILL.md 的 skill 目录（支持多层嵌套）。
 // 只采集 SKILL.md 核心文档，目录内其余文件（脚本/产物/参考）不进版本系统。
+// 注意：root 本身不做 skipDirs 检查（root 常为名字撞 runtimeDirs 的目录，
+// 如 .zcode/cli/plugins/cache——按名跳过会把整棵树漏掉），仅对内部子目录生效。
 // 返回 skillDir(相对root)->files、skill 数。
 func ScanSkills(root string, opt Options) (map[string]map[string][]byte, int, error) {
 	out := map[string]map[string][]byte{}
@@ -70,7 +72,7 @@ func ScanSkills(root string, opt Options) (map[string]map[string][]byte, int, er
 			return nil
 		}
 		if d.IsDir() {
-			if skipDirs(d.Name()) {
+			if path != root && skipDirs(d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -83,8 +85,9 @@ func ScanSkills(root string, opt Options) (map[string]map[string][]byte, int, er
 			return nil
 		}
 		rel, err := filepath.Rel(root, filepath.Dir(path))
-		if err != nil {
-			rel = filepath.Base(path)
+		if err != nil || rel == "." {
+			// root 本身就是 skill 目录：用目录名做 bundle entry（"./SKILL.md" 会让服务端归属失败）
+			rel = filepath.Base(filepath.Dir(path))
 		}
 		out[filepath.ToSlash(rel)] = files
 		n++
@@ -140,7 +143,8 @@ func buildBundle(skills map[string]map[string][]byte) ([]byte, error) {
 }
 
 // UploadBundle 上传一个已收集的 skill 集合（增量推送复用）
-func UploadBundle(server, token, hostname string, skills map[string]map[string][]byte) (string, error) {
+// sourceRoot 为采集来源根目录（服务端按其前缀分类系统 skill；空则不参与分类）
+func UploadBundle(server, token, hostname, sourceRoot string, skills map[string]map[string][]byte) (string, error) {
 	bundle, err := buildBundle(skills)
 	if err != nil {
 		return "", fmt.Errorf("打包失败: %w", err)
@@ -148,6 +152,9 @@ func UploadBundle(server, token, hostname string, skills map[string]map[string][
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 	if err := mw.WriteField("hostname", hostname); err != nil {
+		return "", err
+	}
+	if err := mw.WriteField("source_root", sourceRoot); err != nil {
 		return "", err
 	}
 	if err := mw.WriteField("skill_count", fmt.Sprint(len(skills))); err != nil {
@@ -169,7 +176,7 @@ func UploadBundle(server, token, hostname string, skills map[string]map[string][
 		return "", err
 	}
 	req.Header.Set("Content-Type", mw.FormDataContentType())
-	req.Header.Set("X-Token", token)
+	AddAuth(req, token, buf.Bytes())
 	hc := &http.Client{Timeout: 10 * time.Minute}
 	resp, err := hc.Do(req)
 	if err != nil {
@@ -195,7 +202,7 @@ func Push(opt Options) (string, error) {
 	if n == 0 {
 		return "", fmt.Errorf("在 %s 下未找到任何 SKILL.md", opt.Path)
 	}
-	return UploadBundle(opt.Server, opt.Token, opt.hostnameOrDefault(), skills)
+	return UploadBundle(opt.Server, opt.Token, opt.hostnameOrDefault(), opt.Path, skills)
 }
 
 func (o Options) hostnameOrDefault() string {

@@ -7,11 +7,20 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
 
 type Store struct {
 	db *sql.DB
@@ -145,7 +154,26 @@ CREATE TABLE IF NOT EXISTS jobs (
 	started_at DATETIME,
 	finished_at DATETIME
 );
+
+CREATE TABLE IF NOT EXISTS assignments (
+	machine_id INTEGER NOT NULL REFERENCES machines(id),
+	skill_id INTEGER NOT NULL REFERENCES skills(id),
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY(machine_id, skill_id)
+);
+
+CREATE TABLE IF NOT EXISTS dispatches (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	machine TEXT NOT NULL,
+	action TEXT NOT NULL DEFAULT 'sync',
+	status TEXT NOT NULL DEFAULT 'pending',
+	result TEXT NOT NULL DEFAULT '',
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	picked_at DATETIME,
+	finished_at DATETIME
+);
 CREATE INDEX IF NOT EXISTS idx_jobs_machine ON jobs(machine, status);
+CREATE INDEX IF NOT EXISTS idx_dispatches_machine ON dispatches(machine, status);
 CREATE INDEX IF NOT EXISTS idx_versions_skill ON versions(skill_id, id);
 CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src_id);
 `
@@ -248,6 +276,26 @@ func (s *Store) TokenRole(tok string) (bool, string) {
 	return true, role
 }
 
+// AllTokens 全部候选 token（主 token + 角色表），供 HMAC Key-ID 查找
+func (s *Store) AllTokens() []string {
+	out := []string{}
+	if real, err := s.GetMeta("push_token"); err == nil && real != "" {
+		out = append(out, real)
+	}
+	rows, err := s.db.Query(`SELECT token FROM tokens`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var t string
+		if rows.Scan(&t) == nil {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // CreateRoleToken 新建角色 token（返回明文一次）
 func (s *Store) CreateRoleToken(role, note string) (string, error) {
 	if role != "admin" && role != "user" {
@@ -319,9 +367,38 @@ func (s *Store) UpsertMachine(hostname string) (int64, error) {
 	return res.LastInsertId()
 }
 
+// ClassifySystem 按采集来源路径前缀判定是否系统 skill
+// （系统 skill = ZCode 客户端内置 + Claude Code 内置：其插件缓存目录下的 skill）
+func ClassifySystem(sourceRoot string) bool {
+	norm := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(sourceRoot, "\\", "/"), "`", ""))
+	norm = strings.TrimPrefix(norm, "file://")
+	home, _ := os.UserHomeDir()
+	if home != "" {
+		// 规避 home 前缀干扰（如 AppData 临时目录里恰好有 .zcode 段）：
+		// 换算成相对 home 的路径再匹配。注意 Windows filepath.Rel 返回反斜杠，必须再规范化
+		if rel, err := filepath.Rel(strings.ToLower(filepath.ToSlash(home)), norm); err == nil && !strings.HasPrefix(rel, "..") {
+			norm = strings.ToLower(filepath.ToSlash(rel))
+		}
+	}
+	markers := []string{
+		".zcode/cli/plugins/cache", // ZCode 客户端内置/官方插件
+		".zcode/plugins",
+		".claude/plugins", // Claude Code 内置/官方插件
+		".claude-code/plugins",
+		"/plugins/cache", // 兜底：任意 agent 的插件缓存
+	}
+	for _, m := range markers {
+		if strings.Contains(norm, m) {
+			return true
+		}
+	}
+	return false
+}
+
 // SaveSkill 落一个 skill 的新版本（内容寻址：tree_hash 相同则跳过）
+// isSystem 由采集来源路径判定；UPDATE 已有记录时只置 1 不清 0（手动标记不被采集降级清除）
 // 返回 (skillID, versionID, created)
-func (s *Store) SaveSkill(hostname, name, description string, files map[string][]byte) (int64, int64, bool, error) {
+func (s *Store) SaveSkill(hostname, name, description string, files map[string][]byte, isSystem bool) (int64, int64, bool, error) {
 	mid, err := s.UpsertMachine(hostname)
 	if err != nil {
 		return 0, 0, false, err
@@ -332,8 +409,8 @@ func (s *Store) SaveSkill(hostname, name, description string, files map[string][
 	var sid int64
 	err = s.db.QueryRow(`SELECT id FROM skills WHERE name=? AND machine_id=?`, name, mid).Scan(&sid)
 	if err == sql.ErrNoRows {
-		res, err := s.db.Exec(`INSERT INTO skills(name, machine_id, description) VALUES(?,?,?)`,
-			name, mid, description)
+		res, err := s.db.Exec(`INSERT INTO skills(name, machine_id, description, is_system) VALUES(?,?,?,?)`,
+			name, mid, description, boolInt(isSystem))
 		if err != nil {
 			return 0, 0, false, err
 		}
@@ -344,6 +421,9 @@ func (s *Store) SaveSkill(hostname, name, description string, files map[string][
 		if _, err = s.db.Exec(`UPDATE skills SET description=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
 			description, sid); err != nil {
 			return 0, 0, false, err
+		}
+		if isSystem {
+			s.db.Exec(`UPDATE skills SET is_system=1 WHERE id=?`, sid)
 		}
 	}
 
@@ -571,7 +651,11 @@ type MachineRow struct {
 	LastSeen  string `json:"last_seen"`
 	PushCount int    `json:"push_count"`
 	SkillN    int    `json:"skill_count"`
+	Online    bool   `json:"online"`
 }
+
+// OfflineAfter 设备超过该时长无心跳/推送即判离线
+const OfflineAfter = 35 * time.Minute
 
 func (s *Store) ListMachines() ([]MachineRow, error) {
 	rows, err := s.db.Query(`SELECT m.id, m.hostname, m.first_seen, m.last_seen, m.push_count,
@@ -583,12 +667,40 @@ func (s *Store) ListMachines() ([]MachineRow, error) {
 	out := []MachineRow{}
 	for rows.Next() {
 		var r MachineRow
-		if err := rows.Scan(&r.ID, &r.Hostname, &r.FirstSeen, &r.LastSeen, &r.PushCount, &r.SkillN); err != nil {
+		var lastSeen string
+		if err := rows.Scan(&r.ID, &r.Hostname, &r.FirstSeen, &lastSeen, &r.PushCount, &r.SkillN); err != nil {
 			return nil, err
+		}
+		r.LastSeen = lastSeen
+		// last_seen 存的是 SQLite UTC；modernc 驱动 Scan 成 string 会转成 RFC3339（2026-10-16T00:49:55Z），
+		// 兼容两种格式按 UTC 解析（本机 UTC+8 曾差出 8 小时误判离线）
+		t, err := time.Parse(time.RFC3339, lastSeen)
+		if err != nil {
+			t, err = time.ParseInLocation("2006-01-02 15:04:05", lastSeen, time.UTC)
+		}
+		if err == nil {
+			r.Online = time.Since(t) < OfflineAfter
 		}
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// Heartbeat 记录设备心跳（刷新 last_seen，不计推送数）
+func (s *Store) Heartbeat(hostname string) error {
+	var mid int64
+	err := s.db.QueryRow(`SELECT id FROM machines WHERE hostname=?`, hostname).Scan(&mid)
+	if err == sql.ErrNoRows {
+		res, err := s.db.Exec(`INSERT INTO machines(hostname) VALUES(?)`, hostname)
+		if err != nil {
+			return err
+		}
+		mid, _ = res.LastInsertId()
+	} else if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE machines SET last_seen=CURRENT_TIMESTAMP WHERE id=?`, mid)
+	return err
 }
 
 type Stats struct {
@@ -1091,4 +1203,150 @@ func (s *Store) SetSkillSystem(id int64, isSystem bool) error {
 	}
 	_, err := s.db.Exec(`UPDATE skills SET is_system=? WHERE id=?`, v, id)
 	return err
+}
+
+// ---- 设备-skill 分配 ----
+
+// SetAssignments 全量替换某机器的分配集合
+func (s *Store) SetAssignments(machineID int64, skillIDs []int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`DELETE FROM assignments WHERE machine_id=?`, machineID); err != nil {
+		return err
+	}
+	for _, sid := range skillIDs {
+		if _, err = tx.Exec(`INSERT OR IGNORE INTO assignments(machine_id, skill_id) VALUES(?,?)`, machineID, sid); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// AssignedSkills 某机器被分配的 skill 明细
+func (s *Store) AssignedSkills(machineID int64) ([]SkillRow, error) {
+	rows, err := s.db.Query(`SELECT sk.id, sk.name, sk.machine_id, m.hostname, sk.description,
+		COALESCE(sk.latest_version_id,0), COALESCE(v.tree_hash,''), sk.created_at, sk.updated_at,
+		(SELECT COUNT(*) FROM versions vv WHERE vv.skill_id=sk.id), sk.is_system
+		FROM assignments a
+		JOIN skills sk ON sk.id=a.skill_id
+		JOIN machines m ON m.id=sk.machine_id
+		LEFT JOIN versions v ON v.id=sk.latest_version_id
+		WHERE a.machine_id=? ORDER BY sk.name`, machineID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SkillRow{}
+	for rows.Next() {
+		var r SkillRow
+		if err := rows.Scan(&r.ID, &r.Name, &r.MachineID, &r.Machine, &r.Description,
+			&r.LatestVer, &r.TreeHash, &r.CreatedAt, &r.UpdatedAt, &r.VerCount, &r.IsSystem); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// MachineIDByName 机器名查 ID
+func (s *Store) MachineIDByName(hostname string) (int64, error) {
+	var mid int64
+	err := s.db.QueryRow(`SELECT id FROM machines WHERE hostname=?`, hostname).Scan(&mid)
+	return mid, err
+}
+
+// ---- 下发指令（后台主动发起同步/部署）----
+
+type Dispatch struct {
+	ID         int64  `json:"id"`
+	Machine    string `json:"machine"`
+	Action     string `json:"action"`
+	Status     string `json:"status"`
+	Result     string `json:"result"`
+	CreatedAt  string `json:"created_at"`
+	PickedAt   string `json:"picked_at"`
+	FinishedAt string `json:"finished_at"`
+}
+
+func (s *Store) CreateDispatch(machine, action string) (int64, error) {
+	res, err := s.db.Exec(`INSERT INTO dispatches(machine, action) VALUES(?,?)`, machine, action)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// PendingDispatches 某机器待执行指令（认领：pending → running）
+func (s *Store) PendingDispatches(machine string) ([]Dispatch, error) {
+	rows, err := s.db.Query(`SELECT id FROM dispatches WHERE machine=? AND status='pending' ORDER BY id`, machine)
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	out := []Dispatch{}
+	for _, id := range ids {
+		res, err := s.db.Exec(`UPDATE dispatches SET status='running', picked_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'`, id)
+		if err != nil {
+			return nil, err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			continue
+		}
+		d, err := s.GetDispatch(id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *d)
+	}
+	return out, nil
+}
+
+func (s *Store) GetDispatch(id int64) (*Dispatch, error) {
+	var d Dispatch
+	err := s.db.QueryRow(`SELECT id, machine, action, status, result, created_at,
+		COALESCE(picked_at,''), COALESCE(finished_at,'') FROM dispatches WHERE id=?`, id).
+		Scan(&d.ID, &d.Machine, &d.Action, &d.Status, &d.Result, &d.CreatedAt, &d.PickedAt, &d.FinishedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
+func (s *Store) FinishDispatch(id int64, status, result string) error {
+	_, err := s.db.Exec(`UPDATE dispatches SET status=?, result=?, finished_at=CURRENT_TIMESTAMP WHERE id=?`,
+		status, result, id)
+	return err
+}
+
+func (s *Store) ListDispatches(limit int) ([]Dispatch, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.Query(`SELECT id, machine, action, status, result, created_at,
+		COALESCE(picked_at,''), COALESCE(finished_at,'') FROM dispatches ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Dispatch{}
+	for rows.Next() {
+		var d Dispatch
+		if err := rows.Scan(&d.ID, &d.Machine, &d.Action, &d.Status, &d.Result, &d.CreatedAt, &d.PickedAt, &d.FinishedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
 }

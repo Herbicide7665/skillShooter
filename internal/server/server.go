@@ -25,12 +25,13 @@ import (
 )
 
 type Server struct {
-	st  *store.Store
-	llm *llm.Client
+	st     *store.Store
+	llm    *llm.Client
+	nonces *nonceCache
 }
 
 func New(st *store.Store, lc *llm.Client) *Server {
-	return &Server{st: st, llm: lc}
+	return &Server{st: st, llm: lc, nonces: newNonceCache()}
 }
 
 func writeJSON(w http.ResponseWriter, code int, v interface{}) {
@@ -62,7 +63,12 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 公网部署：所有 API（含读）都要 token，防内容裸奔
-	if !s.checkToken(r) {
+	// 新协议：带 X-Sign 签名头走 HMAC 校验（token 不明文上 wire）；否则回落 X-Token（旧客户端兼容）
+	if r.Header.Get("X-Sign") != "" {
+		if !s.verifySigned(w, r) {
+			return
+		}
+	} else if !s.checkToken(r) {
 		writeErr(w, 401, "token 无效")
 		return
 	}
@@ -211,6 +217,12 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, 200, cs)
+	case parts[0] == "heartbeat" && r.Method == "POST":
+		s.handleHeartbeat(w, r)
+	case parts[0] == "assignments":
+		s.handleAssignments(w, r, parts)
+	case parts[0] == "dispatches":
+		s.handleDispatches(w, r, parts)
 	case parts[0] == "jobs":
 		s.handleJobs(w, r, parts)
 	case parts[0] == "settings" && r.Method == "GET":
@@ -467,11 +479,8 @@ func (s *Server) versionDiff(name string, from, to int64) (string, error) {
 // ---- push ----
 
 // handlePush 接收 tar.gz 打包的 skill 集合（entry 名 = "<skillDir>/<relPath>"）
+// 认证已在 handleAPI 统一处理（X-Sign 签名或 X-Token 明文），此处不再重复校验
 func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
-	if !s.checkToken(r) {
-		writeErr(w, 401, "token 无效")
-		return
-	}
 	hostname := r.FormValue("hostname")
 	if hostname == "" {
 		hostname = "unknown"
@@ -532,6 +541,9 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		allFiles[name] = data
 	}
 
+	// 来源根目录 → 系统 skill 分类（ZCode/Claude Code 内置插件缓存下的算系统）
+	isSys := store.ClassifySystem(r.FormValue("source_root"))
+
 	// 每个 SKILL.md 所在目录即一个 skill；每个文件归属其最近祖先 skill 目录
 	skillDirs := map[string]bool{}
 	for path := range allFiles {
@@ -585,7 +597,7 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 			seg := strings.Split(dirName, "/")
 			name = seg[len(seg)-1]
 		}
-		sid, vid, created, err := s.st.SaveSkill(hostname, name, desc, files)
+		sid, vid, created, err := s.st.SaveSkill(hostname, name, desc, files, isSys)
 		if err != nil {
 			writeErr(w, 500, "保存 "+name+" 失败: "+err.Error())
 			return
@@ -892,7 +904,11 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request, parts []stri
 // ---- 已配置客户端下载（二进制尾部追加 server/token，双击即用）----
 
 func (s *Server) handleClientDL(w http.ResponseWriter, r *http.Request) {
-	if !s.checkToken(r) {
+	if r.Header.Get("X-Sign") != "" {
+		if !s.verifySigned(w, r) {
+			return
+		}
+	} else if !s.checkToken(r) {
 		// 该响应含 token，必须认证后才能取
 		writeErr(w, 401, "token 无效")
 		return
@@ -938,4 +954,163 @@ func (s *Server) handleClientDL(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", "attachment; filename="+name)
 	w.Write(out)
+}
+
+// ---- 心跳探活（30min 间隔；响应捎带待执行下发指令，见 PROTOCOL.md）----
+
+func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Hostname string `json:"hostname"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Hostname == "" {
+		writeErr(w, 400, "需要 hostname")
+		return
+	}
+	if err := s.st.Heartbeat(body.Hostname); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	// 捎带：把该机器 pending 的下发指令一并认领返回（省一次轮询）
+	dispatches, err := s.st.PendingDispatches(body.Hostname)
+	if err != nil {
+		dispatches = []store.Dispatch{}
+	}
+	writeJSON(w, 200, map[string]interface{}{
+		"ok":          true,
+		"server_time": time.Now().UTC().Format(time.RFC3339),
+		"offline_after_min": int(store.OfflineAfter.Minutes()),
+		"dispatches":  dispatches,
+	})
+}
+
+// ---- 设备-skill 分配 ----
+
+func (s *Server) handleAssignments(w http.ResponseWriter, r *http.Request, parts []string) {
+	// GET /api/assignments?machine=<hostname> — 列某机器分配（user 可读，客户端拉取用）
+	if len(parts) == 1 && r.Method == "GET" {
+		machine := r.URL.Query().Get("machine")
+		if machine == "" {
+			writeErr(w, 400, "需要 machine")
+			return
+		}
+		mid, err := s.st.MachineIDByName(machine)
+		if err != nil {
+			writeJSON(w, 200, []store.SkillRow{})
+			return
+		}
+		ss, err := s.st.AssignedSkills(mid)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, ss)
+		return
+	}
+	// PUT /api/assignments/<machine> — 全量设置分配（admin）
+	if len(parts) == 2 && r.Method == "PUT" {
+		if !s.requireRole(w, r, true) {
+			return
+		}
+		mid, err := s.st.MachineIDByName(parts[1])
+		if err != nil {
+			writeErr(w, 404, "机器不存在: "+parts[1])
+			return
+		}
+		var body struct {
+			SkillIDs []int64 `json:"skill_ids"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+		if err := s.st.SetAssignments(mid, body.SkillIDs); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]interface{}{"ok": true, "count": len(body.SkillIDs)})
+		return
+	}
+	writeErr(w, 404, "未知 assignments API")
+}
+
+// ---- 下发指令（后台主动发起同步/部署）----
+
+func (s *Server) handleDispatches(w http.ResponseWriter, r *http.Request, parts []string) {
+	switch {
+	// POST /api/dispatches {machine, action} — 后台下发（admin）
+	case len(parts) == 1 && r.Method == "POST":
+		if !s.requireRole(w, r, true) {
+			return
+		}
+		var body struct {
+			Machine string `json:"machine"`
+			Action  string `json:"action"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Machine == "" {
+			writeErr(w, 400, "需要 machine")
+			return
+		}
+		if body.Action == "" {
+			body.Action = "sync"
+		}
+		if body.Action != "sync" && body.Action != "pull" {
+			writeErr(w, 400, "action 只支持 sync（同步合并+部署分配）或 pull（仅拉取部署）")
+			return
+		}
+		id, err := s.st.CreateDispatch(body.Machine, body.Action)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]int64{"id": id})
+	// GET /api/dispatches?machine=x — 客户端认领 pending 指令（心跳外的补拉通道）
+	case len(parts) == 1 && r.Method == "GET":
+		machine := r.URL.Query().Get("machine")
+		if machine == "" {
+			writeErr(w, 400, "需要 machine")
+			return
+		}
+		ds, err := s.st.PendingDispatches(machine)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, ds)
+	// POST /api/dispatches/<id>/result — 客户端回执
+	case len(parts) == 3 && parts[2] == "result" && r.Method == "POST":
+		id, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			writeErr(w, 400, "bad id")
+			return
+		}
+		var body struct {
+			Status string `json:"status"`
+			Result string `json:"result"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+		if body.Status == "" {
+			body.Status = "done"
+		}
+		if err := s.st.FinishDispatch(id, body.Status, body.Result); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]string{"ok": "1"})
+	// GET /api/dispatches/list — 后台查看最近指令（admin）
+	case len(parts) == 2 && parts[1] == "list" && r.Method == "GET":
+		if !s.requireRole(w, r, true) {
+			return
+		}
+		ds, err := s.st.ListDispatches(50)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, ds)
+	default:
+		writeErr(w, 404, "未知 dispatches API")
+	}
 }

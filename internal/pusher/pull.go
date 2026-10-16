@@ -42,7 +42,7 @@ func Pull(opt PullOptions) (string, error) {
 
 	// 列表
 	req, _ := http.NewRequest("GET", base+fmt.Sprintf("/api/skills?machine=%s", opt.Machine), nil)
-	req.Header.Set("X-Token", opt.Token)
+	AddAuth(req, opt.Token, nil)
 	resp, err := hc.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("请求失败: %w", err)
@@ -88,7 +88,7 @@ func Pull(opt PullOptions) (string, error) {
 			}
 		}
 		req, _ := http.NewRequest("GET", base+fmt.Sprintf("/api/skills/%d/download", s.ID), nil)
-		req.Header.Set("X-Token", opt.Token)
+		AddAuth(req, opt.Token, nil)
 		resp, err := hc.Do(req)
 		if err != nil {
 			failed++
@@ -107,6 +107,61 @@ func Pull(opt PullOptions) (string, error) {
 		pulled++
 	}
 	return fmt.Sprintf("拉取完成: %d 个新落盘, %d 个已存在跳过, %d 个失败（共 %d）", pulled, skipped, failed, len(skills)), nil
+}
+
+// PullAssigned 拉取"针对本设备"的分配 skill 集合并落地（管理平面下发部署的客户端侧）。
+// Machine=本机 hostname；分配项直接覆盖落盘（分配是管理端意图）。
+func PullAssigned(opt PullOptions) (string, error) {
+	if opt.Server == "" || opt.Token == "" || opt.Dest == "" || opt.Machine == "" {
+		return "", fmt.Errorf("需要 --server --token --dest --machine 参数")
+	}
+	base := strings.TrimRight(opt.Server, "/")
+	hc := &http.Client{Timeout: 5 * time.Minute}
+	req, _ := http.NewRequest("GET", base+fmt.Sprintf("/api/assignments?machine=%s", opt.Machine), nil)
+	AddAuth(req, opt.Token, nil)
+	resp, err := hc.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("请求失败: %w", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(body), 300))
+	}
+	var skills []pullSkill
+	if err := json.Unmarshal(body, &skills); err != nil {
+		return "", fmt.Errorf("解析分配列表失败: %w", err)
+	}
+	if len(skills) == 0 {
+		return "云端没有分配给本机的 skill", nil
+	}
+	if err := os.MkdirAll(opt.Dest, 0o755); err != nil {
+		return "", err
+	}
+	pulled, failed := 0, 0
+	names := []string{}
+	for _, s := range skills {
+		req, _ := http.NewRequest("GET", base+fmt.Sprintf("/api/skills/%d/download", s.ID), nil)
+		AddAuth(req, opt.Token, nil)
+		resp, err := hc.Do(req)
+		if err != nil {
+			failed++
+			continue
+		}
+		bundle, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			failed++
+			continue
+		}
+		if err := ExtractTarGz(bundle, filepath.Join(opt.Dest, s.Name)); err != nil {
+			failed++
+			continue
+		}
+		pulled++
+		names = append(names, s.Name)
+	}
+	return fmt.Sprintf("部署分配 skill: %d 个落盘 %v, %d 个失败（共 %d）", pulled, names, failed, len(skills)), nil
 }
 
 func ExtractTarGz(data []byte, dest string) error {

@@ -90,3 +90,44 @@
 ### 7.4 结论
 
 权限模型实现与设计一致，动态攻击面验证 10/10 通过，无发现可利用提权路径。主风险不变：**admin token = 全部客户端执行权**（设计本质），务必妥善保管。
+
+## 八、增量安全审计：协议 v2 + 分配/下发（2026-10-16，范围：本次六项迭代新增面）
+
+### 8.1 新增认证层——HMAC 请求签名（internal/server/auth.go + pusher/sign.go + app.js signHeaders）
+
+- **token 不上 wire**：签名模式五个头（X-Key-ID/X-Timestamp/X-Nonce/X-Body-SHA256/X-Sign），Key-ID=sha256(token)[:16] 不可逆。协议详见 PROTOCOL.md ✅
+- **防重放**：时间窗 ±10min + nonce 缓存 22min（容量 4096 惰性 FIFO 清理，重启清空由时间窗兜底）。实测：同 nonce 重放 401、过期时间窗 401、body/nonce 篡改 401、正确签名 200 ✅
+- **防篡改**：X-Body-SHA256 覆盖完整请求体含 multipart bundle（push 10MB+ 包实测通过）；签名失败**不回落**明文模式（防 downgrade）✅
+- **兼容窗口**：无签名头回落 X-Token（旧客户端可用）；UI/CLI/daemon 已全部切签名模式，明文模式仅为过渡
+- 已知限制：明文 HTTP 下响应内容（skill 正文/任务报告）仍可被链路窃听——机密性需反代 TLS（PROTOCOL.md 已声明）
+
+### 8.2 新增端点权限覆盖（全部经 handleAPI 统一认证门）
+
+| 端点 | 权限 | 审计结论 |
+|---|---|---|
+| POST /api/heartbeat | user+ | 响应只回 server_time 与该机器 pending 指令；**只认 machine=body.hostname**，不可代领他机指令 ✅ |
+| GET /api/assignments | user+ | 读分配（客户端拉取），泄露面=skill id/名/描述，user 本可读 skills，无增量泄露 ✅ |
+| PUT /api/assignments/<host> | **admin** | requireRole(admin) ✅ |
+| POST /api/dispatches、GET /api/dispatches/list | **admin** | requireRole(admin) ✅ |
+| GET /api/dispatches?machine=x、POST .../result | user+ | 认领按 machine 过滤；**heartbeat 认领与补拉均校验 machine 参数与请求者身份一致性靠 token 信任域**（单租户设计，user token 可代任何 machine 认领——与旧版 jobs/next 同构，user 已被禁止 jobs/next，见 8.4 建议） |
+| handlePush | 统一门 | **修复：移除 handlePush 内残留的重复 checkToken**（曾致签名请求被拦且认证逻辑双轨化）；重复来源路径分类 source_root 服务端判定，客户端不可伪造 is_system 绕过（只能自标为系统，影响面=展示分类，低） |
+| handleClientDL | 统一门 | 签名模式已支持 ✅ |
+
+### 8.3 新增面其他审计点
+
+- **SQL 注入**：assignments/dispatches/heartbeat 全部参数化查询 ✅
+- **上传校验**：分配/下发接受任意 skill_id/hostname，存在性校验（机器不存在 404）；skill_id 无存在性校验但 FK 约束兜底 ✅
+- **DoS 面**：nonce 缓存有界（4096+惰性清理）；dispatches 表按 machine+status 索引，认领是 O(pending)，恶意客户端不认领不会堆积爆炸（pending 行数=后台下发的 admin 行为）✅
+- **前端**：设备管理页全部插值经 esc()；PUT body 为纯 ID 数组 ✅
+- **ClassifySystem 路径归一**：Rel 失败保留绝对路径匹配；markers 含 `/plugins/cache` 兜底——恶意推手可把 skill 目录命名为 `x/plugins/cache` 误标为系统（影响=默认隐藏，无权限含义），低风险可接受
+- **隐私**：git 全历史（7390 行 diff）双模式扫描（GLM key 形态 `[0-9a-f]{28,40}\.[A-Za-z0-9]{8,24}` + 通用 40+ 随机串）零命中；跟踪文件现扫零命中 ✅
+
+### 8.4 遗留建议（新增）
+
+1. **低**：user token 可 GET /api/dispatches?machine=任意 认领他机指令——与单租户信任模型一致；若引入多租户需把 machine 与 token 绑定
+2. **低**：明文 X-Token 兼容窗口建议观察 1-2 周后关闭（全部内置客户端已切签名）
+3. **信息**：daemon 心跳间隔默认 30min，离线判定 35min——对"下发指令 30min 内触达"的预期成立
+
+### 8.5 结论
+
+协议 v2 的签名层经负路径动态验证（重放/篡改/过期全拒）；新增端点 token 门全覆盖、admin 面收敛正确；git 历史无任何密钥/隐私数据。可推送 GitHub 私库。
