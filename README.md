@@ -21,7 +21,7 @@
 
 ## 当前部署（2026-10-13）
 
-**中心 hub 已部署在 VPS：http://your-server:8790**（所有 API 含读都需 token，UI 用账号登录（初始 admin 账号密码打印在启动日志）；token 见 VPS `<server-dir>/serve.log` 或 `.token` 文件）。
+**中心 hub 已部署在 VPS：http://your-server:8790**（所有 API 含读都需 token，UI 用账号登录（初始 admin 账号密码打印在启动日志）；API token 见服务端启动日志或服务目录下 `.token` 文件）。
 
 - 已接入机器：`vps`（cron 每日 18:30 全盘自推）、`your-host`（双击 `push-here.bat` 全盘手动推）
 - **新机器接入 = 打开 hub 设置页，复制一条命令到目标机器终端执行**（token 已注入命令）：

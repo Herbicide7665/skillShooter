@@ -72,7 +72,7 @@ skill-hub.exe（单二进制）
 ## 七、上 VPS 部署建议（未执行，按需）
 
 1. 交叉编译：`set GOOS=linux&& set GOARCH=amd64&& go build -o skill-hub .`（或 CI）
-2. 上传 `<server-dir>/`（exe + 可选 config.yaml），`nohup setsid ./skill-hub serve --addr 0.0.0.0:8790 > serve.log 2>&1 &`（paramiko 拉起须 setsid，见既有经验）
+2. 上传到服务器（skillshooter 二进制 + 可选 config.yaml），`nohup setsid ./skill-hub serve --addr 0.0.0.0:8790 > serve.log 2>&1 &`（paramiko 拉起须 setsid，见既有经验）
 3. 腾讯云防火墙放行 8790/TCP；建议 nginx 反代套 TLS 后再公网开放
 4. 各机器 `crontab` 定期 `skill-hub push`（如每日一次）即可自动沉淀演变历史
 
