@@ -13,3 +13,4 @@ skillshooter-darwin-*
 *.exe~
 *.bak
 skillhub.db*
+gui-test-screenshots*
