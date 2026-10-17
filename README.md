@@ -31,7 +31,7 @@
 
 **方式二：下载现成二进制**
 
-[Releases](https://github.com/Herbicide7665/skillShooter/releases/latest) 提供 windows / linux amd64+arm64 / darwin amd64+arm64 五平台构建，服务端与客户端为同一二进制（Linux/macOS 首次运行先 `chmod +x`）。
+[Releases](https://github.com/Herbicide7665/skillShooter/releases/latest) 提供 windows / linux amd64+arm64 / darwin amd64+arm64 五平台构建，每平台分 `skillshooter-server-*` 与 `skillshooter-client-*` 两个名字——**同一二进制**，仅作角色指引：服务端取 `server`，接入机器取 `client`（Linux/macOS 首次运行先 `chmod +x`）。
 
 **方式三：源码构建**
 
