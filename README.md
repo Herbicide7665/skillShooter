@@ -9,6 +9,17 @@
 
 ![总览仪表盘](docs/screenshot-dashboard.png)
 
+## 🚀 在线实例（一键体验）
+
+不必自己找服务器——点击按钮，GitHub Codespaces 会免费开一个云端沙箱，**自动完成构建并启动服务端**（首次约 1~2 分钟），完成后自动打开 web 控制台：
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Herbicide7665/skillShooter?quickstart=1)
+
+- 初始管理员账号密码会在启动终端打印一次（也写在实例内的 `serve.log`），登录后请尽快修改
+- 沙箱未配置 LLM key，去重/合并/关系归纳等智能功能自动降级，其余功能完整可玩
+- 实例数据保存在沙箱内，停止或删除 Codespace 即销毁；免费额度每月 120 核时，随手体验零成本
+- 仓库私有期间仅协作者可拉起；**转为 Public 后任何人都能一键获得自己的临时实例**
+
 ## 它解决什么问题
 
 | 没有 SkillShooter 时 | SkillShooter 的答案 |

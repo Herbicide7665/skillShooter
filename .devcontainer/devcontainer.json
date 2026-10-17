@@ -1,0 +1,13 @@
+{
+  "name": "SkillShooter",
+  "image": "mcr.microsoft.com/devcontainers/go:1.21",
+  "forwardPorts": [8790],
+  "portsAttributes": {
+    "8790": {
+      "label": "SkillShooter Web 控制台",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "go build -o skillshooter .",
+  "postStartCommand": "(nohup ./skillshooter serve > serve.log 2>&1 &) && sleep 1 && cat serve.log"
+}
