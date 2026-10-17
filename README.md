@@ -29,7 +29,11 @@
 - 数据保存在沙箱内，删除 Codespace 即销毁；免费额度每月 120 核时
 - 仓库私有期间仅协作者可拉起；转为 Public 后任何人都能一键获得自己的临时实例
 
-**方式二：源码构建**
+**方式二：下载现成二进制**
+
+[Releases](https://github.com/Herbicide7665/skillShooter/releases/latest) 提供 windows / linux amd64+arm64 / darwin amd64+arm64 五平台构建，服务端与客户端为同一二进制（Linux/macOS 首次运行先 `chmod +x`）。
+
+**方式三：源码构建**
 
 ```bash
 go build -o skillshooter .
