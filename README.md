@@ -1,5 +1,6 @@
 # 🎯 SkillShooter
 
+[![License](https://img.shields.io/badge/license-Apache--2.0-brightgreen.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.21-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)](#环境要求)
 [![Binary](https://img.shields.io/badge/%E4%BA%8C%E8%BF%9B%E5%88%B6-%E5%8D%95%E6%96%87%E4%BB%B6%E9%9B%B6%E4%BE%9D%E8%B5%96-orange)](#架构)
@@ -195,4 +196,4 @@ go test ./...
 
 ## License
 
-暂未设置开源许可证（保留所有权利）。
+以 [Apache-2.0](LICENSE) 开源。
