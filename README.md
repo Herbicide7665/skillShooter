@@ -1,6 +1,6 @@
 # 🎯 SkillShooter
 
-English | [中文](README.md)
+English | [中文](README.zh-CN.md)
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-brightgreen.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.21-00ADD8?logo=go&logoColor=white)](https://go.dev)
