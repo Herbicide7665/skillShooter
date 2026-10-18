@@ -12,5 +12,6 @@
     "security.workspace-trust.enabled": false
   },
   "postCreateCommand": "go build -o skillshooter .",
-  "postStartCommand": "pgrep -f 'skillshooter [s]erve' >/dev/null || (nohup ./skillshooter serve >> serve.log 2>&1 &) ; sleep 1 ; cat serve.log"
+  "postStartCommand": "pgrep -f 'skillshooter [s]erve' >/dev/null || (nohup ./skillshooter serve >> serve.log 2>&1 &) ; sleep 1 ; cat serve.log",
+  "postAttachCommand": "pgrep -f 'skillshooter [s]erve' >/dev/null || (nohup ./skillshooter serve >> serve.log 2>&1 &) ; sleep 1 ; tail -1 serve.log"
 }
