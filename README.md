@@ -58,7 +58,7 @@ llm_base_url: "https://api.openai.com/v1"   # 任意 OpenAI 兼容端点；含 /
 llm_model: "your-model"
 ```
 
-优先级：环境变量（`SKILLSHOOTER_LLM_API_KEY` / `LLM_API_KEY`，兼容 `GLM_API_KEY` / `ZHIPUAI_API_KEY`；`SKILLSHOOTER_LLM_BASE_URL`；`SKILLSHOOTER_LLM_MODEL`）> web 设置页保存 > `config.yaml`。`model` 未配置时智能功能降级不可用，其余功能不受影响。设置页有「测试连通性」按钮。
+优先级：环境变量（`LLM_API_KEY`，兼容 `GLM_API_KEY` / `ZHIPUAI_API_KEY`；`SKILLSHOOTER_LLM_BASE_URL`；`SKILLSHOOTER_LLM_MODEL`）> web 设置页保存 > `config.yaml`。`model` 未配置时智能功能降级不可用，其余功能不受影响。设置页有「测试连通性」按钮。
 
 ## 快速开始
 
@@ -137,9 +137,27 @@ skillshooter daemon     # 设置页可复制完整命令
 
 ## 界面
 
-**Skill 详情**——版本时间线、任意两版本 diff：
+**统一收录**——客户端全盘发现含 `SKILL.md` 的目录自动推送，所有机器的 skill 集中在一张清单：搜索、按机器/家族过滤、版本数与内容哈希一目了然：
 
-![Skill 详情页](docs/screenshot-skill-detail.png)
+![统一收录：多机器 skill 集中清单](docs/screenshot-skills.png)
+
+**全量版本历史**——每次 push 按内容寻址留存版本：时间线回看演变路线，任意两版本 unified diff，历史版本可在线浏览、打包下载：
+
+![全量版本历史：版本时间线与任意两版本 diff](docs/screenshot-skill-detail.png)
+
+**智能去重合并**——精确哈希分组 + 名称/描述相似度预筛 + LLM 逐对判定（置信度与理由随组展示）；合并建议并排预览、与原版 diff 对照，人工点「采纳」才落新版本：
+
+![智能去重合并：LLM 判定与合并建议预览](docs/screenshot-dedup.png)
+
+**关系图谱**——解析 SKILL.md 正文引用自动建边，LLM 归纳「相关 / 调用链」与家族；力导向图按家族着色，点图例聚焦家族，双击节点跳详情：
+
+![关系图谱：按家族着色的力导向图](docs/screenshot-graph.png)
+
+**跨机分发与远程调用**——在设备页给机器分配 skill，下发指令随心跳落盘到目标机；「远程调用」把任务交给目标机的 claude/zcode 执行并回传报告：
+
+![跨机分发：设备管理与下发部署](docs/screenshot-devices.png)
+
+![远程调用：任务下发与执行报告](docs/screenshot-jobs.png)
 
 ## 架构
 
