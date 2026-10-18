@@ -35,6 +35,29 @@ const I18N = {
     settings_usertok: '用户 Token 管理', settings_mkuser: '创建用户 token', settings_llm: 'LLM 接入（自定义模型）',
     settings_changepw: '修改我的密码', settings_users: '用户账号管理', settings_newmachine: '新机器接入（复制即用）',
     sys_admin_only: '仅管理员可见',
+    badge_push: '推送', badge_merged: '合并产生', badge_merged_s: '合并',
+    detail_desc: '描述', detail_hash: '当前树哈希', detail_vercount: '版本数', detail_collected: '收录 / 更新',
+    detail_sourcever: '来源版本', detail_edgetypes: '边类型：', detail_edgetypes2: '（关系图页「更新关系」可重扫）',
+    detail_nofamily: '此 skill 暂无所属家族（GLM 按内容聚类，关系图页「更新关系」可重建）。',
+    detail_family: '同族', detail_family_n: 'GLM 家族',
+    graph_rescanning: '重构中（引用边秒级；GLM 关系+家族约 1~3 分钟）…', graph_nodecolor: '节点颜色=家族：',
+    graph_hint: '节点 = skill（颜色=所属家族，大小随版本数），点图例聚焦家族，双击节点跳详情，可拖拽缩放。展示的为上次固化结果。',
+    dedup_exact: '精确重复', dedup_fuzzy: '近似变体', dedup_open_s: '待处理', dedup_merged_s: '已合并', dedup_ignored_s: '已忽略',
+    dedup_sim: '相似度', dedup_open_t: '待处理', dedup_done_t: '已处理',
+    dedup_empty: '暂无重复组。点击上方「执行去重扫描」开始分析。',
+    dedup_generating: 'GLM 生成中（可能需 30~90 秒）…', dedup_preview: '合并建议预览', dedup_newdesc: '新 description:',
+    dedup_mergedmd: '合并后 SKILL.md', dedup_vsfirst: '与组内首个成员对比', dedup_calc: '计算 diff…',
+    devices_note: '说明',
+    devices_note_body: '设备每 30 分钟心跳一次（daemon 客户端），超 35 分钟无心跳/推送判离线。为设备分配 skill 后，可点「下发部署」让设备在下次心跳（或客户端手动同步）时自动把分配的 skill 拉取落盘到本地 skill 目录。客户端托盘菜单也可主动「立即同步 / 上传本机全部 / 下载云端分配」。命令行：',
+    devices_act_sync: '同步（推送+合并+部署）', devices_act_pull: '拉取部署',
+    devices_th_dev: '设备', devices_th_act: '动作', devices_th_status: '状态', devices_th_result: '结果', devices_th_created: '创建', devices_th_done: '完成',
+    devices_last: '最后活跃', devices_skills: '个 skill', devices_pushes: '次推送',
+    devices_none: '暂无指令。在设备卡片上点「下发部署」开始。',
+    jobs_send_title: '下发任务（目标机器需运行常驻客户端，见设置页）', jobs_skillph: 'skill 名（可空）',
+    jobs_promptph: '任务提示词…（将交给目标机器的 claude/zcode -p 进程执行）',
+    jobs_th_machine: '机器', jobs_th_status: '状态', jobs_th_created: '创建', jobs_th_done: '完成',
+    jobs_none_s: '暂无任务', jobs_skill_col: 'skill',
+    jobs_report: '报告', jobs_prompt_l: '提示词', jobs_report_l: '报告', jobs_output_l: '执行输出',
   },
   en: {
     nav_dashboard: 'Dashboard', nav_graph: 'Graph', nav_dedup: 'Dedup', nav_devices: 'Devices',
@@ -67,6 +90,29 @@ const I18N = {
     settings_usertok: 'User tokens', settings_mkuser: 'Create user token', settings_llm: 'LLM (custom model)',
     settings_changepw: 'Change my password', settings_users: 'User accounts', settings_newmachine: 'Onboard a new machine (copy & run)',
     sys_admin_only: 'Admin only',
+    badge_push: 'push', badge_merged: 'merged', badge_merged_s: 'merged',
+    detail_desc: 'Description', detail_hash: 'Tree hash', detail_vercount: 'Versions', detail_collected: 'Collected / Updated',
+    detail_sourcever: 'From versions', detail_edgetypes: 'Edge types:', detail_edgetypes2: '(re-scan on the Graph page)',
+    detail_nofamily: 'No family yet (clustered by GLM; rebuild it via "Update relations" on the Graph page).',
+    detail_family: 'Family', detail_family_n: 'GLM family',
+    graph_rescanning: 'Rebuilding (references are instant; LLM relations take ~1-3 min)…', graph_nodecolor: 'node color = family:',
+    graph_hint: 'Nodes = skills (color = family, size = version count). Click a legend chip to focus a family, double-click a node for details. Drag and zoom freely. Shows the last persisted result.',
+    dedup_exact: 'Exact duplicate', dedup_fuzzy: 'Near variant', dedup_open_s: 'Open', dedup_merged_s: 'Merged', dedup_ignored_s: 'Dismissed',
+    dedup_sim: 'Similarity', dedup_open_t: 'Open', dedup_done_t: 'Processed',
+    dedup_empty: 'No duplicate groups yet. Click "Run dedup scan" above to start.',
+    dedup_generating: 'Generating (may take 30-90s)…', dedup_preview: 'Merge proposal preview', dedup_newdesc: 'New description:',
+    dedup_mergedmd: 'Merged SKILL.md', dedup_vsfirst: 'Compared with the first member', dedup_calc: 'Computing diff…',
+    devices_note: 'How it works',
+    devices_note_body: 'Devices heartbeat every 30 minutes (daemon client) and go offline after 35 minutes of silence. Assign skills to a device, then click "Deploy" — the assigned skills are pulled to the device skill directory on its next heartbeat (or a manual sync). The client tray menu can also "Sync now / Upload all / Download assigned" on demand. Command line:',
+    devices_act_sync: 'Sync (push+merge+deploy)', devices_act_pull: 'Pull & deploy',
+    devices_th_dev: 'Device', devices_th_act: 'Action', devices_th_status: 'Status', devices_th_result: 'Result', devices_th_created: 'Created', devices_th_done: 'Finished',
+    devices_last: 'Last active', devices_skills: 'skills', devices_pushes: 'pushes',
+    devices_none: 'No commands yet. Click "Deploy" on a device card to start.',
+    jobs_send_title: 'Dispatch a task (the target machine needs the resident client — see Settings)', jobs_skillph: 'skill name (optional)',
+    jobs_promptph: 'Task prompt… (executed by the claude/zcode -p process on the target machine)',
+    jobs_th_machine: 'Machine', jobs_th_status: 'Status', jobs_th_created: 'Created', jobs_th_done: 'Finished',
+    jobs_none_s: 'No jobs yet', jobs_skill_col: 'skill',
+    jobs_report: 'report', jobs_prompt_l: 'Prompt', jobs_report_l: 'Report', jobs_output_l: 'Output',
   },
 };
 let LANG = localStorage.getItem('sklang') || 'zh';
@@ -276,7 +322,7 @@ async function pageDashboard() {
     </div>
     <h2>${t('dash_families')}</h2>
     <div class="panel" style="display:flex;gap:8px;flex-wrap:wrap" id="famchips">
-      ${(await api('/families')).slice(0, 10).map(f => `<a href="#" class="famchip" onclick="sessionStorage.setItem('famPreselect','${esc(f.kind + ':' + esc(f.key))}');location.hash='#/skills';return false"><b>${esc(f.key)}</b> <span class="muted">${f.names.length} 个</span></a>`).join('') || (`<span class="muted small">${t('dash_families_empty')}</span>`)}
+      ${(await api('/families')).slice(0, 10).map(f => `<a href="#" class="famchip" onclick="sessionStorage.setItem('famPreselect','${esc(f.kind + ':' + esc(f.key))}');location.hash='#/skills';return false"><b>${esc(f.key)}</b> <span class="muted">${f.names.length}${LANG === 'zh' ? ' 个' : ''}</span></a>`).join('') || (`<span class="muted small">${t('dash_families_empty')}</span>`)}
     </div>
     <h2>${t('dash_onlinestatus')}</h2>
     <div id="devbox"><div class="loading">加载中…</div></div>
@@ -286,7 +332,7 @@ async function pageDashboard() {
       <td class="muted small">${esc(fmtTime(r.created_at))}</td>
       <td><a href="#/skill/${r.skill_id}">${esc(r.name)}</a></td>
       <td><span class="badge b-machine">${esc(r.machine)}</span></td>
-      <td><span class="badge b-${r.kind === 'merged' ? 'merged' : 'push'}">${r.kind === 'merged' ? '合并' : '推送'}</span></td>
+      <td><span class="badge b-${r.kind === 'merged' ? 'merged' : 'push'}">${r.kind === 'merged' ? t('badge_merged_s') : t('badge_push')}</span></td>
       <td class="mono small">v${r.version_id}</td>
     </tr>`).join('') || `<tr><td colspan="5" class="muted">${t('dash_empty_recent')}</td></tr>`}
     </tbody></table>`;
@@ -357,7 +403,7 @@ async function pageSkills() {
         <td>${s.version_count}</td>
         <td class="muted small">${esc(fmtTime(s.updated_at))}</td>
         <td class="mono small muted">${esc(s.tree_hash.slice(0, 10))}</td>
-      </tr>`; }).join('') || '<tr><td colspan="6" class="muted">无匹配结果</td></tr>'}
+      </tr>`; }).join('') || `<tr><td colspan="6" class="muted">${t('skills_noresult')}</td></tr>`}
       </tbody></table>`;
   };
   const hs = document.getElementById('hidesys'), hd = document.getElementById('hidedup');
@@ -381,10 +427,10 @@ async function pageSkillDetail(rest) {
   $app.innerHTML = `
     <h1>${esc(s.name)} <span class="badge b-machine">${esc(s.machine)}</span></h1>
     <div class="panel kv">
-      <div class="k">描述</div><div>${esc(s.description) || '<span class="muted">无</span>'}</div>
-      <div class="k">当前树哈希</div><div class="mono">${esc(s.tree_hash)}</div>
-      <div class="k">版本数</div><div>${s.version_count}</div>
-      <div class="k">收录 / 更新</div><div>${esc(fmtTime(s.created_at))} → ${esc(fmtTime(s.updated_at))}</div>
+      <div class="k">${t('detail_desc')}</div><div>${esc(s.description) || '<span class="muted">—</span>'}</div>
+      <div class="k">${t('detail_hash')}</div><div class="mono">${esc(s.tree_hash)}</div>
+      <div class="k">${t('detail_vercount')}</div><div>${s.version_count}</div>
+      <div class="k">${t('detail_collected')}</div><div>${esc(fmtTime(s.created_at))} → ${esc(fmtTime(s.updated_at))}</div>
       <div class="k">${t('detail_issystem')}</div><div><span id="sysmark" class="badge ${s.is_system ? 'b-push' : 'b-open'}">${s.is_system ? (LANG==='zh'?'是':'Yes') : (LANG==='zh'?'否':'No')}</span>
         <button style="margin-left:8px" onclick="window._toggleSys(${s.id}, ${s.is_system ? 'false' : 'true'})">${s.is_system ? t('detail_unmark') : t('detail_marksys')}</button></div>
     </div>
@@ -408,7 +454,7 @@ async function pageSkillDetail(rest) {
       <div class="edge-list">${edgeHTML(d.edges_out, '引用 →') || '<span class="muted small">无</span>'}</div>
       <b>${t('detail_inedges')}</b>
       <div class="edge-list">${edgeHTML(d.edges_in, '→ 引用') || '<span class="muted small">无</span>'}</div>
-      <span class="muted small">边类型：<span class="badge b-reference">reference 引用</span> <span class="badge b-related">related 相关</span> <span class="badge b-chain">chain 调用链</span>（关系图页「更新关系」可重扫）</span>
+      <span class="muted small">${t('detail_edgetypes')}<span class="badge b-reference">reference</span> <span class="badge b-related">related</span> <span class="badge b-chain">chain</span> ${t('detail_edgetypes2')}</span>
     </div>
     <div class="panel" id="fampanel"><span class="muted small">家族信息加载中…</span></div>`;
 
@@ -417,10 +463,10 @@ async function pageSkillDetail(rest) {
   vl.innerHTML = d.versions.map(v => `
     <li><span class="ver">v${v.id}</span>
       <span class="when">${esc(fmtTime(v.created_at))}</span>
-      <span class="badge ${v.kind === 'merged' ? 'b-merged' : 'b-push'}">${v.kind === 'merged' ? '合并产生' : '推送'}</span>
+      <span class="badge ${v.kind === 'merged' ? 'b-merged' : 'b-push'}">${v.kind === 'merged' ? t('badge_merged') : t('badge_push')}</span>
       <span class="mono small muted">${esc(v.tree_hash.slice(0, 12))}</span>
-      <span class="small muted">${v.file_count} 文件 · ${fmtBytes(v.total_size)}</span>
-      ${v.kind === 'merged' ? `<span class="small muted">来源版本: ${(v.source_version_ids || []).join(', ')}</span>` : ''}
+      <span class="small muted">${v.file_count} ${LANG === 'en' ? 'file' : '文件'} · ${fmtBytes(v.total_size)}</span>
+      ${v.kind === 'merged' ? `<span class="small muted">${t('detail_sourcever')}: ${(v.source_version_ids || []).join(', ')}</span>` : ''}
     </li>`).join('');
 
   // diff 选择器
@@ -486,10 +532,10 @@ async function pageSkillDetail(rest) {
     const panel = document.getElementById('fampanel');
     if (!panel) return;
     const fam = families.find(f => f.names.includes(s.name));
-    if (!fam) { panel.innerHTML = '<span class="muted small">此 skill 暂无所属家族（GLM 按内容聚类，关系图页「更新关系」可重建）。</span>'; return; }
+    if (!fam) { panel.innerHTML = `<span class="muted small">${t('detail_nofamily')}</span>`; return; }
     const siblings = {};
     (fam.Members || []).forEach(m => { if (m.Name !== s.name && !siblings[m.Name]) siblings[m.Name] = m; });
-    panel.innerHTML = `<b>同族「${esc(fam.key)}」</b> <span class="badge b-related" title="${esc(fam.note || '')}">GLM 家族 · ${fam.names.length} 个</span>
+    panel.innerHTML = `<b>${t('detail_family')}「${esc(fam.key)}」</b> <span class="badge b-related" title="${esc(fam.note || '')}">${t('detail_family_n')} · ${fam.names.length}</span>
       <div class="edge-list">${Object.values(siblings).map(m => `<div><a href="#/skill/${m.id}">${esc(m.Name)}</a> <span class="badge b-machine">${esc(m.Machine)}</span></div>`).join('')}</div>`;
   }).catch(() => {});
 
@@ -523,20 +569,20 @@ async function pageGraph() {
   $app.innerHTML = `
     <div class="page-head"><h1>${t('graph_title')}</h1></div>
     <div class="toolbar">
-      <button class="primary" id="rescan">更新关系（引用边 + GLM 关系/家族重构，固化）</button>
+      <button class="primary" id="rescan">${t('graph_rescan')}</button>
       <label class="small" style="display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="ghidesys"> ${t('graph_hidesys')}</label>
       <span class="muted small" id="gstat"></span>
     </div>
     <div class="legend">
-      <span><i style="background:#148a4c"></i>reference 引用</span>
-      <span><i style="background:#3565e0"></i>related 相关</span>
-      <span><i style="background:#8b5cf6"></i>chain 调用链</span>
-      <span class="muted">节点颜色=家族：</span>
+      <span><i style="background:#148a4c"></i>reference</span>
+      <span><i style="background:#3565e0"></i>related</span>
+      <span><i style="background:#8b5cf6"></i>chain</span>
+      <span class="muted">${t('graph_nodecolor')}</span>
       ${families.map(f => `<a href="#" class="famchip" data-fk="${esc(f.kind + ':' + f.key)}" style="--fc:${famColorMap[f.kind + ':' + f.key]}" title="${esc(f.note || '')}"><b>${esc(f.key)}</b> ${f.names.length}</a>`).join('') || '<span class="muted small">尚未生成，点上方按钮让 GLM 按内容聚类并固化</span>'}
     </div>
     <div id="graphbox"></div>
-    <p class="muted small">节点 = skill（颜色=所属家族，大小随版本数），点图例聚焦家族，双击节点跳详情，可拖拽缩放。展示的为上次固化结果。</p>`;
-  document.getElementById('gstat').textContent = `${g.skills.length} 节点 / ${g.edges.length} 边`;
+    <p class="muted small">${t('graph_hint')}</p>`;
+  document.getElementById('gstat').textContent = `${g.skills.length} ${LANG === 'en' ? 'nodes' : '节点'} / ${g.edges.length} ${LANG === 'en' ? 'edges' : '边'}`;
 
   const gh = document.getElementById('ghidesys');
   gh.checked = localStorage.getItem('skhub_graph_hidesys') !== '0'; // 默认隐藏系统 skill
@@ -556,7 +602,7 @@ async function pageGraph() {
       return;
     }
     const gv = viewData();
-    document.getElementById('gstat').textContent = `${gv.skills.length} 节点 / ${gv.edges.length} 边${gh.checked && g.skills.length !== gv.skills.length ? `（已隐藏 ${g.skills.length - gv.skills.length} 个系统 skill）` : ''}`;
+    document.getElementById('gstat').textContent = `${gv.skills.length} ${LANG === 'en' ? 'nodes' : '节点'} / ${gv.edges.length} ${LANG === 'en' ? 'edges' : '边'}${gh.checked && g.skills.length !== gv.skills.length ? (LANG === 'en' ? ` (${g.skills.length - gv.skills.length} system skills hidden)` : `（已隐藏 ${g.skills.length - gv.skills.length} 个系统 skill）`) : ''}`;
     const nodes = new vis.DataSet(gv.skills.map(s => {
       const fc = nameFam[s.name] || '#7ba7e0';
       return ({
@@ -613,7 +659,7 @@ async function pageGraph() {
 
   document.getElementById('rescan').onclick = async () => {
     const btn = document.getElementById('rescan');
-    btn.disabled = true; btn.textContent = '重构中（引用边秒级；GLM 关系+家族约 1~3 分钟）…';
+    btn.disabled = true; btn.textContent = t('graph_rescanning');
     try {
       const r = await apiPost('/edges/scan');
       const parts = [`引用边 ${r.reference_edges} 条`];
@@ -625,7 +671,7 @@ async function pageGraph() {
       toast(parts.join('，') + (err ? '（' + err.trim() + '）' : ''));
       pageGraph();
     } catch (e) { toast(e.message, true); }
-    btn.disabled = false; btn.textContent = '更新关系（引用边 + GLM 关系/家族重构，固化）';
+    btn.disabled = false; btn.textContent = t('graph_rescan');
   };
 }
 
@@ -647,25 +693,23 @@ async function pageDevices() {
   $app.innerHTML = `
     <div class="page-head"><h1>${t('devices_title')}</h1></div>
     <div class="panel" style="border-left:4px solid var(--accent)">
-      <b class="small">说明</b>
+      <b class="small">${t('devices_note')}</b>
       <p class="small muted" style="margin:6px 0">
-        设备每 30 分钟心跳一次（daemon 客户端），超 35 分钟无心跳/推送判离线。
-        为设备分配 skill 后，可点「下发部署」让设备在下次心跳（或客户端手动同步）时自动把分配的 skill 拉取落盘到本地 skill 目录。
-        客户端托盘菜单也可主动「立即同步 / 上传本机全部 / 下载云端分配」。命令行：<code class="inline">skillshooter pull --assigned --dest ~/.agents/skills</code>。
+        ${t('devices_note_body')}<code class="inline">skillshooter pull --assigned --dest ~/.agents/skills</code>。
       </p>
     </div>
     <div id="devlist"><div class="loading">加载中…</div></div>
     <h2>${t('devices_history')}</h2>
-    <table class="tbl"><thead><tr><th>#</th><th>设备</th><th>动作</th><th>状态</th><th>结果</th><th>创建</th><th>完成</th></tr></thead>
+    <table class="tbl"><thead><tr><th>#</th><th>${t('devices_th_dev')}</th><th>${t('devices_th_act')}</th><th>${t('devices_th_status')}</th><th>${t('devices_th_result')}</th><th>${t('devices_th_created')}</th><th>${t('devices_th_done')}</th></tr></thead>
     <tbody>
     ${(dispatches || []).map(d => `<tr>
       <td>#${d.id}</td><td><span class="badge b-machine">${esc(d.machine)}</span></td>
-      <td>${d.action === 'sync' ? '同步（推送+合并+部署）' : '拉取部署'}</td>
+      <td>${d.action === 'sync' ? t('devices_act_sync') : t('devices_act_pull')}</td>
       <td><span class="badge b-${d.status === 'done' ? 'push' : d.status === 'pending' ? 'open' : d.status === 'running' ? 'machine' : 'exact'}">${esc(d.status)}</span></td>
       <td class="small muted" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(d.result)}">${esc(d.result || '—')}</td>
       <td class="muted small">${esc(fmtTime(d.created_at))}</td>
       <td class="muted small">${esc(fmtTime(d.finished_at))}</td>
-    </tr>`).join('') || '<tr><td colspan="7" class="muted">暂无指令。在设备卡片上点「下发部署」开始。</td></tr>'}
+    </tr>`).join('') || `<tr><td colspan="7" class="muted">${t('devices_none')}</td></tr>`}
     </tbody></table>`;
   const box = document.getElementById('devlist');
   box.innerHTML = machines.map(m => `
@@ -673,7 +717,7 @@ async function pageDevices() {
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <b>${esc(m.hostname)}</b>
         <span class="badge ${m.online ? 'b-push' : 'b-exact'}">${m.online ? t('dash_online') : t('dash_offline')}</span>
-        <span class="muted small">最后活跃 ${esc(fmtTime(m.last_seen))} · ${m.skill_count} 个 skill · ${m.push_count} 次推送</span>
+        <span class="muted small">${t('devices_last')} ${esc(fmtTime(m.last_seen))} · ${m.skill_count} ${t('devices_skills')} · ${m.push_count} ${t('devices_pushes')}</span>
         <span style="flex:1"></span>
         <button class="primary" onclick="window._dispatch('${esc(m.hostname)}','sync')">${t('devices_dispatch')}</button>
         <button onclick="window._dispatch('${esc(m.hostname)}','pull')">${t('devices_pull')}</button>
@@ -733,7 +777,7 @@ async function pageDedup() {
     <div class="page-head"><h1>${t('dedup_title')}</h1></div>
     <div class="toolbar">
       <button class="primary" id="scanbtn">${t('dedup_scan')}</button>
-      <span class="muted small">精确哈希分组 + 名称/描述相似度预筛（GLM 配置后自动逐对判定）</span>
+      <span class="muted small">${LANG === 'en' ? 'Exact hash grouping + name/description similarity pre-screening (pairwise LLM judgment once an LLM is configured)' : '精确哈希分组 + 名称/描述相似度预筛（GLM 配置后自动逐对判定）'}</span>
     </div>
     <div id="dupbox"></div>`;
   const box = document.getElementById('dupbox');
@@ -742,10 +786,10 @@ async function pageDedup() {
     return `<h2>${title}</h2>` + gs.map(g => `
       <div class="panel" data-gid="${g.id}">
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <b>组 #${g.id}</b>
-          <span class="badge b-${esc(g.type)}">${g.type === 'exact' ? '精确重复' : '近似变体'}</span>
-          <span class="badge b-${esc(g.status)}">${g.status === 'open' ? '待处理' : g.status === 'merged' ? '已合并' : '已忽略'}</span>
-          <span class="muted small">相似度 ${(g.similarity * 100).toFixed(0)}%</span>
+          <b>${LANG === 'en' ? 'Group' : '组'} #${g.id}</b>
+          <span class="badge b-${esc(g.type)}">${g.type === 'exact' ? t('dedup_exact') : t('dedup_fuzzy')}</span>
+          <span class="badge b-${esc(g.status)}">${g.status === 'open' ? t('dedup_open_s') : g.status === 'merged' ? t('dedup_merged_s') : t('dedup_ignored_s')}</span>
+          <span class="muted small">${t('dedup_sim')} ${(g.similarity * 100).toFixed(0)}%</span>
         </div>
         ${g.reason ? `<p class="small muted" style="margin:6px 0">${esc(g.reason)}</p>` : ''}
         <table class="tbl"><tbody>
@@ -764,8 +808,8 @@ async function pageDedup() {
         <div id="mp-${g.id}"></div>` : ''}
       </div>`).join('');
   };
-  box.innerHTML = renderGroups(open, `待处理 (${open.length})`) + renderGroups(done, `已处理 (${done.length})`) ||
-    '<div class="panel muted">暂无重复组。点击上方「执行去重扫描」开始分析。</div>';
+  box.innerHTML = renderGroups(open, `${t('dedup_open_t')} (${open.length})`) + renderGroups(done, `${t('dedup_done_t')} (${done.length})`) ||
+    `<div class="panel muted">${t('dedup_empty')}</div>`;
 
   document.getElementById('scanbtn').onclick = async () => {
     const btn = document.getElementById('scanbtn');
@@ -782,18 +826,18 @@ async function pageDedup() {
   };
   window._mergeProp = async gid => {
     const box = document.getElementById(`mp-${gid}`);
-    box.innerHTML = '<div class="loading">GLM 生成中（可能需 30~90 秒）…</div>';
+    box.innerHTML = `<div class="loading">${t('dedup_generating')}</div>`;
     try {
       const p = await apiPost(`/dup/groups/${gid}/merge-proposal`);
       window._proposals = window._proposals || {};
       window._proposals[gid] = p;
       box.innerHTML = `
         <div class="panel" style="background:#fffdf5">
-          <b>合并建议预览</b> <span class="muted small">${esc(p.notes || '')}</span>
-          <p class="small muted" style="margin:6px 0">新 description: ${esc(p.description)}</p>
+          <b>${t('dedup_preview')}</b> <span class="muted small">${esc(p.notes || '')}</span>
+          <p class="small muted" style="margin:6px 0">${t('dedup_newdesc')} ${esc(p.description)}</p>
           <div class="merge-cols">
-            <div><b class="small">合并后 SKILL.md</b><pre class="code" style="max-height:380px">${esc(p.skill_md)}</pre></div>
-            <div><b class="small">与组内首个成员对比</b><div id="mdiff-${gid}" class="loading">计算 diff…</div></div>
+            <div><b class="small">${t('dedup_mergedmd')}</b><pre class="code" style="max-height:380px">${esc(p.skill_md)}</pre></div>
+            <div><b class="small">${t('dedup_vsfirst')}</b><div id="mdiff-${gid}" class="loading">${t('dedup_calc')}</div></div>
           </div>
           <div class="toolbar" style="margin-top:12px">
             <button class="primary" onclick="window._adopt(${gid})">${t('dedup_adopt')}</button>
@@ -1114,20 +1158,20 @@ async function pageJobs() {
   $app.innerHTML = `
     <div class="page-head"><h1>${t('jobs_title')}</h1></div>
     <div class="panel">
-      <h2 style="margin-top:0">下发任务（目标机器需运行常驻客户端，见设置页）</h2>
+      <h2 style="margin-top:0">${t('jobs_send_title')}</h2>
       <div class="toolbar">
         <select id="jmachine">${machines.map(m => `<option value="${esc(m.hostname)}">${esc(m.hostname)}</option>`).join('')}</select>
-        <input type="text" id="jskill" list="skilllist" placeholder="skill 名（可空）" style="min-width:220px">
+        <input type="text" id="jskill" list="skilllist" placeholder="${t('jobs_skillph')}" style="min-width:220px">
         <datalist id="skilllist">${skillNames.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
       </div>
-      <textarea id="jprompt" placeholder="任务提示词…（将交给目标机器的 claude/zcode -p 进程执行）" style="width:100%;min-height:88px;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:inherit"></textarea>
+      <textarea id="jprompt" placeholder="${t('jobs_promptph')}" style="width:100%;min-height:88px;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:inherit"></textarea>
       <div class="toolbar" style="margin-top:10px">
-        <button class="primary" id="jsubmit">下发</button>
+        <button class="primary" id="jsubmit">${t('jobs_send')}</button>
         <span class="small muted" id="jmsg"></span>
       </div>
     </div>
     <h2>${t('jobs_list')}</h2>
-    <table class="tbl"><thead><tr><th>#</th><th>机器</th><th>skill</th><th>状态</th><th>CLI</th><th>创建</th><th>完成</th></tr></thead>
+    <table class="tbl"><thead><tr><th>#</th><th>${t('jobs_th_machine')}</th><th>${t('jobs_skill_col')}</th><th>${t('jobs_th_status')}</th><th>CLI</th><th>${t('jobs_th_created')}</th><th>${t('jobs_th_done')}</th></tr></thead>
     <tbody id="jbody">${renderJobRows(jobs)}</tbody></table>
     <div id="jdetail"></div>`;
 
@@ -1158,7 +1202,7 @@ async function pageJobs() {
       <td class="mono small">${esc(j.agent_cli || '—')}</td>
       <td class="muted small">${esc(fmtTime(j.created_at))}</td>
       <td class="muted small">${esc(fmtTime(j.finished_at))}</td></tr>`).join('') ||
-      '<tr><td colspan="7" class="muted">暂无任务</td></tr>';
+      `<tr><td colspan="7" class="muted">${t('jobs_none')}</td></tr>`;
   }
 }
 
@@ -1170,13 +1214,13 @@ window._jobDetail = async id => {
     let rep = {};
     try { rep = JSON.parse(j.result || '{}'); } catch (e) {}
     box.innerHTML = `
-      <h2>任务 #${j.id} 报告 <span class="badge b-machine">${esc(j.machine)}</span> <span class="small muted">skill: ${esc(j.skill || '—')} · CLI: ${esc(j.agent_cli || '—')}</span></h2>
+      <h2>Job #${j.id} ${t('jobs_report')} <span class="badge b-machine">${esc(j.machine)}</span> <span class="small muted">skill: ${esc(j.skill || '—')} · CLI: ${esc(j.agent_cli || '—')}</span></h2>
       <div class="panel">
-        <b class="small">提示词</b>
+        <b class="small">${t('jobs_prompt_l')}</b>
         <pre class="code" style="max-height:140px">${esc(j.prompt)}</pre>
-        <b class="small">asdste100 报告</b>
+        <b class="small">${t('jobs_report_l')}</b>
         <pre class="code" style="max-height:220px">${esc(JSON.stringify(rep, null, 2))}</pre>
-        ${rep.output ? `<b class="small">执行输出</b><pre class="code" style="max-height:420px">${esc(rep.output)}</pre>` : ''}
+        ${rep.output ? `<b class="small">${t('jobs_output_l')}</b><pre class="code" style="max-height:420px">${esc(rep.output)}</pre>` : ''}
       </div>`;
     box.scrollIntoView({behavior: 'smooth'});
   } catch (e) { box.innerHTML = `<div class="panel" style="color:var(--danger)">${esc(e.message)}</div>`; }

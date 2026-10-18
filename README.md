@@ -10,7 +10,7 @@ English | [中文](README.zh-CN.md)
 
 **A cross-machine management platform for agent skills.** Collect the skills scattered across your machines and AI coding tools (ZCode / Claude Code / the generic `.agents` layout) into one self-hosted service: unified collection, full version history, smart dedup & merge, a relation graph, cross-machine distribution and remote execution. Server and client are the same single Go binary with zero runtime dependencies.
 
-![Dashboard](docs/screenshot-dashboard.png)
+![Dashboard](docs/en/screenshot-dashboard.png)
 
 ## Requirements
 
@@ -107,25 +107,25 @@ See [Configuration](#configuration); without it everything else works as usual.
 
 **Unified collection** — the client recursively discovers every directory containing a `SKILL.md` (plugin caches with deep nesting included) and pushes automatically; all machines' skills land in one searchable list with machine/family filters, version counts and content hashes. Only the SKILL.md core document is collected — local scripts and data artifacts never enter the store:
 
-![Unified collection](docs/screenshot-skills.png)
+![Unified collection](docs/en/screenshot-skills.png)
 
 **Full version history** — every push stores a new version addressed by content: a timeline per skill, unified diff between any two versions, and history versions browsable and downloadable as tar.gz:
 
-![Full version history](docs/screenshot-skill-detail.png)
+![Full version history](docs/en/screenshot-skill-detail.png)
 
 **Smart dedup & merge** — exact hash grouping + name/description similarity pre-screening + LLM judgment per pair (confidence and reasoning shown with each group); merge proposals come with a side-by-side preview and a diff against the original, and nothing is written until a human clicks "Adopt":
 
-![Smart dedup & merge](docs/screenshot-dedup.png)
+![Smart dedup & merge](docs/en/screenshot-dedup.png)
 
 **Relation graph** — reference edges parsed from SKILL.md bodies plus LLM-clustered "related / chain" relations and families; a force-directed graph colored by family, click a legend chip to focus a family, double-click a node for details:
 
-![Relation graph](docs/screenshot-graph.png)
+![Relation graph](docs/en/screenshot-graph.png)
 
 **Cross-machine distribution & remote execution** — assign skills to a machine on the Devices page; dispatched commands land on the target with the next heartbeat (or `pull --assigned` manually). "Remote execution" hands a task to the claude/zcode CLI on the target machine and collects the report:
 
-![Cross-machine distribution](docs/screenshot-devices.png)
+![Cross-machine distribution](docs/en/screenshot-devices.png)
 
-![Remote execution](docs/screenshot-jobs.png)
+![Remote execution](docs/en/screenshot-jobs.png)
 
 Smart features depend on an LLM, but it is optional: without one, dedup falls back to pre-screened groups, merge and relation clustering are unavailable, and everything else works as usual.
 
