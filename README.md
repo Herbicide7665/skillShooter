@@ -5,10 +5,10 @@ English | [中文](README.zh-CN.md)
 [![License](https://img.shields.io/badge/license-Apache--2.0-brightgreen.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.21-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)](#requirements)
-[![Binary](https://img.shields.io/badge/Single%20binary-Zero%20dependencies-orange)](#architecture)
+[![Binary](https://img.shields.io/badge/Two%20binaries-Zero%20dependencies-orange)](#architecture)
 [![i18n](https://img.shields.io/badge/UI-%E4%B8%AD%E6%96%87%20%7C%20English-green)](#features)
 
-**A cross-machine management platform for agent skills.** Collect the skills scattered across your machines and AI coding tools (ZCode / Claude Code / the generic `.agents` layout) into one self-hosted service: unified collection, full version history, smart dedup & merge, a relation graph, cross-machine distribution and remote execution. Server and client are the same single Go binary with zero runtime dependencies.
+**A cross-machine management platform for agent skills.** Collect the skills scattered across your machines and AI coding tools (ZCode / Claude Code / the generic `.agents` layout) into one self-hosted service: unified collection, full version history, smart dedup & merge, a relation graph, cross-machine distribution and remote execution. Server and client are two separate single-file Go binaries with zero runtime dependencies — run `skillshooter-server` once on your VPS, and `skillshooter-client` on every managed machine.
 
 ![Dashboard](docs/en/screenshot-dashboard.png)
 
@@ -31,24 +31,30 @@ Click the badge and Codespaces spins up a cloud sandbox that builds the project 
 - Data lives inside the sandbox and is destroyed when the Codespace is deleted; the free tier covers 120 core-hours per month
 - While the repository is private only collaborators can launch it; once public, anyone can get a temporary instance with one click
 
-**Option 2: download a prebuilt binary**
+**Option 2: download prebuilt binaries**
 
-[Releases](https://github.com/Herbicide7665/skillShooter/releases/latest) provides builds for windows / linux amd64+arm64 / darwin amd64+arm64. Each platform ships two names — `skillshooter-server-*` and `skillshooter-client-*` — of the **same binary**, purely as a role hint: pick `server` for the hub, `client` for managed machines (`chmod +x` first on Linux/macOS).
+[Releases](https://github.com/Herbicide7665/skillShooter/releases/latest) provides two binaries per platform (windows / linux amd64+arm64 / darwin amd64+arm64):
+
+- `skillshooter-server-*` — the hub. One instance, on your VPS/server.
+- `skillshooter-client-*` — the managed-machine agent (Windows tray or CLI).
+
+The client can also be distributed by the hub itself: put the `skillshooter-client-*` builds next to the server binary and the settings page / bootstrap scripts hand out pre-configured clients (see step 3). `chmod +x` first on Linux/macOS.
 
 **Option 3: build from source**
 
 ```bash
-go build -o skillshooter .
+go build -o skillshooter-server  ./cmd/skillshooter-server
+go build -o skillshooter-client  ./cmd/skillshooter-client
 ```
 
 ## Quick start
 
-All data and configuration live next to the binary: `skillshooter.db` (created automatically) + `config.yaml` (template: [config.yaml.example](config.yaml.example)). Client common flags: `--server` / `--token`, or environment variables `SKILLSHOOTER_SERVER` / `SKILLSHOOTER_TOKEN`.
+Two roles, two binaries: **server** on the hub machine (all data lives next to it: `skillshooter.db` created automatically + `config.yaml`, template: [config.yaml.example](config.yaml.example)); **client** on every managed machine (common flags `--server` / `--token`, or environment variables `SKILLSHOOTER_SERVER` / `SKILLSHOOTER_TOKEN`).
 
-**1. Start the server**
+**1. Start the server (hub, e.g. on a VPS)**
 
 ```bash
-./skillshooter serve                # default 0.0.0.0:8790
+./skillshooter-server serve        # default 0.0.0.0:8790
 # optional flags: --addr 0.0.0.0:9000 --db /data/skillshooter.db
 ```
 
@@ -66,16 +72,16 @@ curl -fsSL http://SERVER:8790/agent.sh | sh -s -- --server http://SERVER:8790 --
 # on Windows use the agent.ps1 bootstrap command from the settings page
 ```
 
-The bootstrap script downloads the client from the server's `/dl/` endpoint for your OS/arch into `~/.skillshooter/`, discovers the skill directories under `~/.agents`, `~/.claude` and `~/.zcode`, and pushes them in bulk. It is idempotent; pass `--daemon` to enter resident mode straight away. You can also push a single directory manually:
+The bootstrap script downloads the `skillshooter-client` binary from the server's `/dl/` endpoint for your OS/arch into `~/.skillshooter/` (drop the client builds next to the server binary first — the settings page "one-click" buttons do the same), discovers the skill directories under `~/.agents`, `~/.claude` and `~/.zcode`, and pushes them in bulk. It is idempotent; pass `--daemon` to enter resident mode straight away. You can also push a single directory manually:
 
 ```bash
-skillshooter push --server http://SERVER:8790 --token TOKEN --path ~/.agents/skills --hostname my-laptop
+skillshooter-client push --server http://SERVER:8790 --token TOKEN --path ~/.agents/skills --hostname my-laptop
 ```
 
 **4. Resident client (recommended on every machine)**
 
 ```bash
-skillshooter daemon     # full command is copyable from the settings page
+skillshooter-client daemon     # full command is copyable from the settings page
 ```
 
 Defaults: 30s incremental watch-and-push, 5min apply-cloud-merges, remote-job polling, 30min heartbeat — all tunable via flags. On Windows the resident client is a tray icon; the tray "Configure…" dialog edits server URL / token / device name / intervals / watch directories visually, and a first start without configuration opens the setup wizard directly.
@@ -127,40 +133,63 @@ Smart features depend on an LLM, but it is optional: without one, dedup falls ba
 
 ### Client experience
 
-- Windows tray resident client with a visual configuration dialog (see [Quick start](#quick-start) step 4); cross-platform CLI: `push` / `pull` / `daemon` / `config`
-- One-click Chinese/English UI switch; built-in and duplicate skills can be hidden with one click
+- Windows tray resident client with a visual configuration dialog (see [Quick start](#quick-start) step 4); cross-platform CLI: `push` / `pull` / `daemon` / `config`- One-click Chinese/English UI switch; built-in and duplicate skills can be hidden with one click
 
 ## Architecture
 
 ```
- ┌──────────────┐    push / pull / heartbeat / job claim   ┌──────────────────────────┐
- │  machine A    │ ──────────(HMAC-signed requests)───────▶ │ server: skillshooter serve│
- │  daemon + CLI │ ◀─────────(assigned skills /            │  · SQLite WAL content-    │
- └──────────────┘            merged results / jobs)──────── │    addressed storage      │
- ┌──────────────┐                                           │  · web console (accounts) │
- │  machine B …  │ ───────────── same as above ──────────────┴──────────▲─────────────┘
- └──────────────┘                                                       │
-                                                       browser http://server:8790
+ ┌──────────────┐    push / pull / heartbeat / job claim   ┌────────────────────────────┐
+ │  machine A    │ ──────────(HMAC-signed requests)───────▶ │ hub: skillshooter-server   │
+ │  skillshooter- │ ◀─────────(assigned skills /            │  · SQLite WAL content-     │
+ │  client daemon │            merged results / jobs)──────── │    addressed storage      │
+ └──────────────┘                                           │  · web console (accounts)  │
+ ┌──────────────┐                                           │  · /dl/ hands out pre-     │
+ │  machine B …  │ ───────────── same as above ──────────────┴──configured clients──────▲─┘
+ └──────────────┘                                                                       │
+                                                                      browser http://server:8790
 ```
 
 The full client↔server `/api/*` protocol (three auth modes, the signature algorithm, endpoint list) is documented in [PROTOCOL.md](PROTOCOL.md).
 
 ## CLI reference
 
+`skillshooter-server`:
+
 | command | what it does |
 |---|---|
 | `serve` | start the web server (default `:8790`) |
+
+`skillshooter-client`:
+
+| command | what it does |
+|---|---|
 | `push` | scan a directory and push skills (recursive SKILL.md discovery) |
 | `pull` | pull the latest versions from the hub (skips existing; same-name skills from different machines become `name@machine`) |
 | `daemon` | resident client: incremental push + apply cloud merges + claim remote jobs |
 | `config` | terminal configuration wizard (Enter keeps the current value) |
 | `upload` | alias of `push` |
+| *(no args)* | tray resident mode from saved config (Windows) |
 
 ## Data & operations
 
-- All data lives next to the binary: `skillshooter.db` (SQLite/WAL, content-addressed blob storage) + `config.yaml`
-- **Backup = copy one db file; migration = copy db + binary**
+- All data lives next to the server binary: `skillshooter.db` (SQLite/WAL, content-addressed blob storage) + `config.yaml`
+- **Backup = copy one db file; migration = copy db + server binary**
+- Client machines keep no state beyond `~/.skillshooter/` (config.json, logs, downloaded jobs)
 - No external dependencies — open the port in the firewall and go; for public deployments put nginx with TLS in front
+
+## Releasing (maintainers)
+
+Tag a version and push it — `git tag v2.4.0 && git push origin v2.4.0` — then attach cross-compiled binaries to the GitHub release:
+
+```bash
+for osarch in "linux amd64" "linux arm64" "darwin amd64" "darwin arm64" "windows amd64"; do
+  set -- $osarch
+  GOOS=$1 GOARCH=$2 go build -o skillshooter-server-$1-$2  ./cmd/skillshooter-server
+  GOOS=$1 GOARCH=$2 go build -o skillshooter-client-$1-$2  ./cmd/skillshooter-client
+done
+# windows artifacts end in .exe; put the skillshooter-client-* builds next to the server
+# binary on the VPS so /dl/ and the settings page can hand out pre-configured clients
+```
 
 ## Testing
 

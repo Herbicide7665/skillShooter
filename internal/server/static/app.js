@@ -17,7 +17,7 @@ const I18N = {
     dash_onlinestatus: '设备在线状态（30min 心跳探活，超 35min 判离线）', dash_recent: '最近变更流',
     dash_online: '● 在线', dash_offline: '○ 离线', dash_lastactive: '最后活跃',
     dash_skilln: 'skill 数', dash_pushn: '推送次数', dash_monline: '来源机器', dash_type: '类型', dash_version: '版本', dash_time: '时间', dash_skill: 'Skill',
-    dash_empty_recent: '暂无记录，先用 skillshooter push 推送数据', dash_no_machines: '尚无设备接入',
+    dash_empty_recent: '暂无记录，先用 skillshooter-client push 推送数据', dash_no_machines: '尚无设备接入',
     skills_title: 'Skills', skills_search: '搜索名称或描述…', skills_allmachines: '全部机器', skills_allfams: '全部分类',
     skills_hidesys: '隐藏系统自带', skills_hidedup: '隐藏重复', skills_count: '个 skill', skills_noresult: '无匹配结果',
     skills_col_name: '名称', skills_col_desc: '描述', skills_col_machine: '机器', skills_col_version: '版本', skills_col_updated: '更新时间', skills_col_hash: '哈希',
@@ -72,7 +72,7 @@ const I18N = {
     dash_onlinestatus: 'Device online status (30min heartbeat, offline after 35min silence)', dash_recent: 'Recent changes',
     dash_online: '● Online', dash_offline: '○ Offline', dash_lastactive: 'Last active',
     dash_skilln: 'skills', dash_pushn: 'pushes', dash_monline: 'Machine', dash_type: 'Type', dash_version: 'Version', dash_time: 'Time', dash_skill: 'Skill',
-    dash_empty_recent: 'No records yet — push data with skillshooter push first', dash_no_machines: 'No devices connected',
+    dash_empty_recent: 'No records yet — push data with skillshooter-client push first', dash_no_machines: 'No devices connected',
     skills_title: 'Skills', skills_search: 'Search name or description…', skills_allmachines: 'All machines', skills_allfams: 'All families',
     skills_hidesys: 'Hide built-in', skills_hidedup: 'Hide duplicates', skills_count: 'skills', skills_noresult: 'No results',
     skills_col_name: 'Name', skills_col_desc: 'Description', skills_col_machine: 'Machine', skills_col_version: 'Versions', skills_col_updated: 'Updated', skills_col_hash: 'Hash',
@@ -695,7 +695,7 @@ async function pageDevices() {
     <div class="panel" style="border-left:4px solid var(--accent)">
       <b class="small">${t('devices_note')}</b>
       <p class="small muted" style="margin:6px 0">
-        ${t('devices_note_body')}<code class="inline">skillshooter pull --assigned --dest ~/.agents/skills</code>。
+        ${t('devices_note_body')}<code class="inline">skillshooter-client pull --assigned --dest ~/.agents/skills</code>。
       </p>
     </div>
     <div id="devlist"><div class="loading">加载中…</div></div>
@@ -903,14 +903,14 @@ async function pageSettings() {
     <div class="panel" id="set-access" style="border-left:4px solid var(--accent)">
       <h2 style="margin-top:0">${t('settings_onestep')}</h2>
       <div class="toolbar">
-        <button class="primary" onclick="window._dlClient('skillshooter.exe')">⬇ Windows</button>
-        <button onclick="window._dlClient('skillshooter')">⬇ Linux</button>
-        <button onclick="window._dlClient('skillshooter-darwin-arm64')">⬇ macOS (Apple)</button>
-        <button onclick="window._dlClient('skillshooter-darwin-amd64')">⬇ macOS (Intel)</button>
+        <button class="primary" onclick="window._dlClient('skillshooter-client.exe')">⬇ Windows</button>
+        <button onclick="window._dlClient('skillshooter-client')">⬇ Linux</button>
+        <button onclick="window._dlClient('skillshooter-client-darwin-arm64')">⬇ macOS (Apple)</button>
+        <button onclick="window._dlClient('skillshooter-client-darwin-amd64')">⬇ macOS (Intel)</button>
       </div>
       <p class="small muted">${LANG === 'zh'
-        ? '下载的二进制<b>已内嵌本 Hub 地址与接入配置</b>：放到任意目录，Windows 直接双击 — 托盘出现图标（右键：打开 Hub / 立即同步 / 配置 / 退出），自动全盘推送本机 skill、增量同步、应用云端合并、接收远程调用。Linux/macOS：<code class="inline">chmod +x skillshooter && ./skillshooter</code>。'
-        : 'The downloaded binary <b>embeds this Hub URL and credentials</b>: drop it anywhere, double-click on Windows — a tray icon appears (right-click: Open Hub / Sync now / Configure / Quit), auto-pushing local skills, incremental sync, applying cloud merges, receiving jobs. Linux/macOS: <code class="inline">chmod +x skillshooter && ./skillshooter</code>.'}</p>
+        ? '下载的<b>客户端</b>二进制已内嵌本 Hub 地址与接入配置：放到任意目录，Windows 直接双击 — 托盘出现图标（右键：打开 Hub / 立即同步 / 配置 / 退出），自动全盘推送本机 skill、增量同步、应用云端合并、接收远程调用。Linux/macOS：<code class="inline">chmod +x skillshooter-client && ./skillshooter-client</code>。'
+        : 'The downloaded <b>client</b> binary embeds this Hub URL and credentials: drop it anywhere, double-click on Windows — a tray icon appears (right-click: Open Hub / Sync now / Configure / Quit), auto-pushing local skills, incremental sync, applying cloud merges, receiving jobs. Linux/macOS: <code class="inline">chmod +x skillshooter-client && ./skillshooter-client</code>.'}</p>
     </div>
     <div class="panel" id="set-token">
       <h2 style="margin-top:0">${t('settings_token')}</h2>
@@ -1090,9 +1090,9 @@ async function pageSettings() {
       document.getElementById('cmdWin').value =
         "powershell -NoProfile -ExecutionPolicy Bypass -Command \"iwr '" + hub + "/agent.ps1' -OutFile $env:TEMP\\sh-agent.ps1; & $env:TEMP\\sh-agent.ps1 -Server '" + hub + "' -Token '" + s.token + "'" + hnW + '"';
       document.getElementById('cmdPull').value =
-        '~/.skillshooter/skillshooter pull --server ' + hub + ' --token ' + s.token + ' --dest ~/.agents/skills';
+        '~/.skillshooter/skillshooter-client pull --server ' + hub + ' --token ' + s.token + ' --dest ~/.agents/skills';
       document.getElementById('cmdDaemon').value =
-        'nohup ~/.skillshooter/skillshooter daemon --server ' + hub + ' --token ' + s.token + hnU + ' > ~/.skillshooter/daemon.log 2>&1 &';
+        'nohup ~/.skillshooter/skillshooter-client daemon --server ' + hub + ' --token ' + s.token + hnU + ' > ~/.skillshooter/daemon.log 2>&1 &';
     };
     buildCmds();
     document.getElementById('bsHost').addEventListener('input', buildCmds);

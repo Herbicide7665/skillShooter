@@ -1177,12 +1177,13 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// handleFileDL 分发二进制本体（免 token，新机器一条命令接入用）
+// handleFileDL 分发客户端二进制（免 token，新机器一条命令接入用）——只发 client；
+// server 二进制（含管理面/数据库本体）不经此通道下发，VPS 上 /dl/ 目录也只需放 client 产物
 func (s *Server) handleFileDL(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(r.URL.Path, "/dl/")
 	if name == "" || strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") ||
-		!strings.HasPrefix(name, "skillshooter") {
-		writeErr(w, 403, "只允许下载 skillshooter 二进制")
+		!strings.HasPrefix(name, "skillshooter-client") {
+		writeErr(w, 403, "只允许下载 skillshooter 客户端二进制")
 		return
 	}
 	ex, err := os.Executable()
@@ -1330,9 +1331,9 @@ func (s *Server) handleClientDL(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimPrefix(r.URL.Path, "/api/client/")
 	allowed := map[string]bool{
-		"skillshooter.exe": true, "skillshooter": true,
-		"skillshooter-linux-amd64": true, "skillshooter-linux-arm64": true,
-		"skillshooter-darwin-amd64": true, "skillshooter-darwin-arm64": true,
+		"skillshooter-client.exe": true, "skillshooter-client": true,
+		"skillshooter-client-linux-amd64": true, "skillshooter-client-linux-arm64": true,
+		"skillshooter-client-darwin-amd64": true, "skillshooter-client-darwin-arm64": true,
 	}
 	if !allowed[name] {
 		writeErr(w, 403, "非法文件名")

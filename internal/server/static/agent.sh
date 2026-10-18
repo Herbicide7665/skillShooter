@@ -29,23 +29,23 @@ mkdir -p "$HUBDIR"
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 BIN=""
-EXE="skillshooter"
+EXE="skillshooter-client"
 case "$OS" in
   Linux)
     case "$ARCH" in
-      aarch64|arm64) BIN="skillshooter-linux-arm64" ;;
-      *)             BIN="skillshooter-linux-amd64" ;;
+      aarch64|arm64) BIN="skillshooter-client-linux-arm64" ;;
+      *)             BIN="skillshooter-client-linux-amd64" ;;
     esac
     ;;
   Darwin)
     case "$ARCH" in
-      arm64) BIN="skillshooter-darwin-arm64" ;;
-      *)     BIN="skillshooter-darwin-amd64" ;;
+      arm64) BIN="skillshooter-client-darwin-arm64" ;;
+      *)     BIN="skillshooter-client-darwin-amd64" ;;
     esac
     ;;
   MINGW*|MSYS*|CYGWIN*)
-    BIN="skillshooter.exe"
-    EXE="skillshooter.exe"
+    BIN="skillshooter-client.exe"
+    EXE="skillshooter-client.exe"
     ;;
   *)
     echo "不支持的系统: $OS（请手动到 $SERVER/dl/ 下载二进制）" >&2
@@ -59,7 +59,7 @@ if command -v curl >/dev/null 2>&1; then
 else
   wget -q -O "$HUBDIR/$EXE" "$SERVER/dl/$BIN"
 fi
-if [ "$EXE" = "skillshooter" ]; then
+if [ "$EXE" = "skillshooter-client" ]; then
   chmod +x "$HUBDIR/$EXE"
 fi
 SH="$HUBDIR/$EXE"

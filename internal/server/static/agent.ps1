@@ -12,9 +12,9 @@ $ProgressPreference = "SilentlyContinue"  # PS5.1 progress rendering makes big d
 
 $HubDir = Join-Path $env:USERPROFILE ".skillshooter"
 New-Item -ItemType Directory -Force -Path $HubDir | Out-Null
-$Exe = Join-Path $HubDir "skillshooter.exe"
-Write-Host "==> download skillshooter.exe -> $Exe"
-Invoke-WebRequest -Uri "$Server/dl/skillshooter.exe" -OutFile $Exe -UseBasicParsing
+$Exe = Join-Path $HubDir "skillshooter-client.exe"
+Write-Host "==> download skillshooter-client.exe -> $Exe"
+Invoke-WebRequest -Uri "$Server/dl/skillshooter-client.exe" -OutFile $Exe -UseBasicParsing
 
 if (-not $Hostname) { $Hostname = $env:COMPUTERNAME }
 

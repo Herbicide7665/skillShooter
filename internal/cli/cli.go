@@ -1,33 +1,32 @@
-package main
+package cli
 
 import (
-	"context"
 	"flag"
 	"fmt"
-	"net"
-	"net/http"
 	"os"
-	"os/signal"
-	"strings"
 	"path/filepath"
 	"strconv"
-	"syscall"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"skillshooter/internal/daemon"
-	"skillshooter/internal/llm"
 	"skillshooter/internal/pusher"
-	"skillshooter/internal/server"
-	"skillshooter/internal/store")
+)
 
-// Config config.yaml
+// Config config.yaml（服务端读取；客户端同目录兼容但客户端实际只用环境变量/config.json）
 type Config struct {
-	LLM llm.Config `yaml:",inline"`
+	LLM llmConfig `yaml:",inline"`
 }
 
-func exeDir() string {
+type llmConfig struct {
+	APIKey  string `yaml:"llm_api_key"`
+	BaseURL string `yaml:"llm_base_url"`
+	Model   string `yaml:"llm_model"`
+}
+
+func ExeDir() string {
 	ex, err := os.Executable()
 	if err != nil {
 		return "."
@@ -35,7 +34,7 @@ func exeDir() string {
 	return filepath.Dir(ex)
 }
 
-func loadConfig() Config {
+func LoadConfig() Config {
 	var cfg Config
 	cfg.LLM.BaseURL = os.Getenv("SKILLSHOOTER_LLM_BASE_URL")
 	cfg.LLM.Model = os.Getenv("SKILLSHOOTER_LLM_MODEL")
@@ -54,7 +53,7 @@ func loadConfig() Config {
 		cfg.LLM.Model = os.Getenv("SKILLSHOOTER_GLM_MODEL")
 	}
 	// config.yaml 与二进制同目录（新键 llm_*；兼容旧 glm_* 键）
-	path := filepath.Join(exeDir(), "config.yaml")
+	path := filepath.Join(ExeDir(), "config.yaml")
 	if data, err := os.ReadFile(path); err == nil {
 		var fc Config
 		if err := yaml.Unmarshal(data, &fc); err == nil {
@@ -94,137 +93,37 @@ func loadConfig() Config {
 	return cfg
 }
 
-// applyLLMOverrides 设置页（meta 表）保存的 LLM 配置覆盖 config.yaml（env 在 loadConfig 里已最优先）
-func applyLLMOverrides(cfg Config, st *store.Store) Config {
-	for _, m := range []struct{ key string; dst *string }{
-		{"llm_api_key", &cfg.LLM.APIKey},
-		{"llm_base_url", &cfg.LLM.BaseURL},
-		{"llm_model", &cfg.LLM.Model},
-	} {
-		if v, err := st.GetMeta(m.key); err == nil && v != "" {
-			*m.dst = v
-		}
-	}
-	return cfg
-}
-
-func main() {
-	if len(os.Args) < 2 {
-		// 无参数 = 客户端模式（双击已配置的二进制）
-		runClientDefault()
-		return
-	}
-	switch os.Args[1] {
-	case "serve":
-		cmdServe(os.Args[2:])
-	case "push":
-		cmdPush(os.Args[2:])
-	case "upload":
-		cmdPush(os.Args[2:])
-	case "pull":
-		cmdPull(os.Args[2:])
-	case "daemon":
-		cmdDaemon(os.Args[2:])
-	case "config":
-		cmdConfig(os.Args[2:])
-	case "dlgtest":
-		daemon.ShowConfigDialog(daemon.ClientConfig{})
-		fmt.Println("dialog flow done")
-	case "-h", "--help", "help":
-		usage()
-	default:
-		fmt.Fprintf(os.Stderr, "未知命令: %s\n\n", os.Args[1])
-		usage()
-		os.Exit(1)
-	}
-}
-
-func usage() {
-	fmt.Print(`skillshooter — 跨机 Agent Skill 管理平台
+func UsageClient() {
+	fmt.Print(`skillshooter-client — 跨机 Agent Skill 管理平台 · 客户端
 
 用法:
-  skillshooter serve  [--addr 0.0.0.0:8790] [--db skillshooter.db]
-      启动 web 服务（数据与 config.yaml 就在二进制同目录；启动日志含接入 token）
-  skillshooter push --server URL --token TOKEN --path <目录> [--hostname 名字]
+  skillshooter-client push --server URL --token TOKEN --path <目录> [--hostname 名字]
       递归扫描目录下所有含 SKILL.md 的子目录并上传
-  skillshooter pull --server URL --token TOKEN --dest <目录> [--machine 名字] [--overwrite] [--assigned]
+  skillshooter-client pull --server URL --token TOKEN --dest <目录> [--machine 名字] [--overwrite] [--assigned]
       把 hub 上全部（或某机器的）skill 最新版本拉回本地（合并成果分发）
       --assigned: 只拉"分配给本机"的 skill 集合（--machine 填本机名，落盘 --dest）
-  skillshooter upload --server URL --token TOKEN --path <目录> [--hostname 名字]
+  skillshooter-client upload --server URL --token TOKEN --path <目录> [--hostname 名字]
       上传本地 skill 到后台（等价 push，语义化别名）
-  skillshooter config
+  skillshooter-client config
       终端问答式编辑客户端配置（~/.skillshooter/config.json），改完重启客户端生效
-  skillshooter daemon --server URL --token TOKEN [--hostname 名字] [选项]
+  skillshooter-client daemon --server URL --token TOKEN [--hostname 名字] [选项]
       常驻客户端：增量监控本机 agent 目录推送 + 应用云端合并结果 + 部署分配 skill + 心跳探活 + 接收远程 skill 调用
       选项: --interval 30  --apply-interval 300  --job-poll 5  --heartbeat 1800  --roots 路径1,路径2
             --no-watch / --no-apply / --no-jobs / --no-heartbeat
+  （无参数双击 = 按 ~/.skillshooter/config.json 直接常驻；无配置则弹配置向导）
 `)
 }
 
-func cmdServe(args []string) {
-	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	addr := fs.String("addr", "0.0.0.0:8790", "监听地址")
-	dbPath := fs.String("db", "", "SQLite 路径（默认二进制同目录 skillshooter.db）")
-	fs.Parse(args)
+func UsageServer() {
+	fmt.Print(`skillshooter-server — 跨机 Agent Skill 管理平台 · 服务端
 
-	dir := exeDir()
-	if *dbPath == "" {
-		*dbPath = filepath.Join(dir, "skillshooter.db")
-	}
-	st, err := store.Open(*dbPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "打开数据库失败: %v\n", err)
-		os.Exit(1)
-	}
-	defer st.Close()
-	if tok, err := st.EnsureToken(); err != nil {
-		fmt.Fprintf(os.Stderr, "生成 token 失败: %v\n", err)
-		os.Exit(1)
-	} else {
-		fmt.Printf("[skillshooter] API token: %s\n", tok)
-	}
-	if pw, created, err := st.EnsureUsers(); err != nil {
-		fmt.Fprintf(os.Stderr, "初始化用户失败: %v\n", err)
-		os.Exit(1)
-	} else if created {
-		if pw == "" {
-			pw = os.Getenv("SKILLSHOOTER_ADMIN_PASSWORD")
-		}
-		fmt.Printf("[skillshooter] 初始管理员账号: admin  密码: %s （仅此一次打印，请登录后尽快修改）\n", pw)
-	}
-
-	cfg := applyLLMOverrides(loadConfig(), st)
-	lc := llm.New(cfg.LLM)
-	srv := server.New(st, lc)
-
-	mux := http.NewServeMux()
-	srv.Serve(mux)
-
-	ln, err := net.Listen("tcp", *addr)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "监听失败: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("[skillshooter] serving http://%s  db=%s  llm=%s(model=%s)\n",
-		ln.Addr(), *dbPath, map[bool]string{true: "已配置", false: "未配置"}[cfg.LLM.APIKey != ""], cfg.LLM.Model)
-
-	httpSrv := &http.Server{Handler: mux}
-	go func() {
-		if err := httpSrv.Serve(ln); err != nil && err != http.ErrServerClosed {
-			fmt.Fprintf(os.Stderr, "服务异常退出: %v\n", err)
-			os.Exit(1)
-		}
-	}()
-
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	<-sig
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	httpSrv.Shutdown(ctx)
+用法:
+  skillshooter-server serve  [--addr 0.0.0.0:8790] [--db skillshooter.db]
+      启动 web 服务（数据与 config.yaml 就在二进制同目录；启动日志含接入 token）
+`)
 }
 
-func cmdPush(args []string) {
+func CmdPush(args []string) {
 	fs := flag.NewFlagSet("push", flag.ExitOnError)
 	serverURL := fs.String("server", os.Getenv("SKILLSHOOTER_SERVER"), "服务地址，如 http://1.2.3.4:8790")
 	token := fs.String("token", os.Getenv("SKILLSHOOTER_TOKEN"), "接入 token（服务端设置页可见）")
@@ -247,7 +146,7 @@ func cmdPush(args []string) {
 	fmt.Printf("push 完成 (%.1fs): %s\n", time.Since(start).Seconds(), out)
 }
 
-func cmdPull(args []string) {
+func CmdPull(args []string) {
 	fs := flag.NewFlagSet("pull", flag.ExitOnError)
 	serverURL := fs.String("server", os.Getenv("SKILLSHOOTER_SERVER"), "服务地址，如 http://1.2.3.4:8790")
 	token := fs.String("token", os.Getenv("SKILLSHOOTER_TOKEN"), "接入 token")
@@ -283,7 +182,7 @@ func cmdPull(args []string) {
 	fmt.Printf("pull 完成 (%.1fs): %s\n", time.Since(start).Seconds(), out)
 }
 
-func cmdDaemon(args []string) {
+func CmdDaemon(args []string) {
 	fs := flag.NewFlagSet("daemon", flag.ExitOnError)
 	serverURL := fs.String("server", os.Getenv("SKILLSHOOTER_SERVER"), "hub 地址")
 	token := fs.String("token", os.Getenv("SKILLSHOOTER_TOKEN"), "接入 token")
@@ -333,9 +232,9 @@ func cmdDaemon(args []string) {
 	}
 }
 
-// runClientDefault 无参数双击模式：读自身尾部内嵌配置（回落 config.json），
+// RunClientDefault 无参数双击模式：读自身尾部内嵌配置（回落 config.json），
 // 有配置则直接以托盘（Windows）/CLI（其他）常驻；无配置弹配置窗引导。
-func runClientDefault() {
+func RunClientDefault() {
 	server, token, selfOK := daemon.SelfConfig()
 	cfg, cfgOK := daemon.LoadClientConfig()
 	if cfgOK && (!selfOK || (cfg.Server == server && cfg.Token == token)) {
@@ -370,8 +269,8 @@ func runClientDefault() {
 	}
 }
 
-// cmdConfig 终端问答式编辑客户端配置（跨平台兜底；Windows 也可用）
-func cmdConfig(args []string) {
+// CmdConfig 终端问答式编辑客户端配置（跨平台兜底；Windows 也可用）
+func CmdConfig(args []string) {
 	cfg, ok := daemon.LoadClientConfig()
 	if !ok {
 		cfg = daemon.ClientConfig{}

@@ -8,6 +8,6 @@ SRV=${SRV:-http://your-server:8790}
 H=${H:-your-host}
 HOME_DIR=${HOME}
 for p in "$HOME_DIR/.agents/skills" "$HOME_DIR/.claude/skills" "$HOME_DIR/.claude/plugins" "$HOME_DIR/.zcode/cli/plugins/cache"; do
-  [ -d "$p" ] && "$DIR/skillshooter.exe" push --server "$SRV" --token "$TOK" --path "$p" --hostname "$H"
+  [ -d "$p" ] && "$DIR/skillshooter-client.exe" push --server "$SRV" --token "$TOK" --path "$p" --hostname "$H"
 done
 echo "== push 完成，hub: $SRV =="

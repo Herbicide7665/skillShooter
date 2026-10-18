@@ -1,7 +1,9 @@
 {
   "name": "SkillShooter",
   "image": "mcr.microsoft.com/devcontainers/go:1.21",
-  "forwardPorts": [8790],
+  "forwardPorts": [
+    8790
+  ],
   "portsAttributes": {
     "8790": {
       "label": "SkillShooter Web 控制台",
@@ -11,7 +13,7 @@
   "settings": {
     "security.workspace-trust.enabled": false
   },
-  "postCreateCommand": "go build -o skillshooter .",
-  "postStartCommand": "pgrep -f 'skillshooter [s]erve' >/dev/null || (nohup ./skillshooter serve >> serve.log 2>&1 &) ; sleep 1 ; cat serve.log",
-  "postAttachCommand": "pgrep -f 'skillshooter [s]erve' >/dev/null || (nohup ./skillshooter serve >> serve.log 2>&1 &) ; sleep 1 ; tail -1 serve.log"
+  "postCreateCommand": "go build -o skillshooter-server ./cmd/skillshooter-server && go build -o skillshooter-client ./cmd/skillshooter-client",
+  "postStartCommand": "pgrep -f 'skillshooter-server [s]erve' >/dev/null || (nohup ./skillshooter-server serve >> serve.log 2>&1 &) ; sleep 1 ; cat serve.log",
+  "postAttachCommand": "pgrep -f 'skillshooter-server [s]erve' >/dev/null || (nohup ./skillshooter-server serve >> serve.log 2>&1 &) ; sleep 1 ; tail -1 serve.log"
 }

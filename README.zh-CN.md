@@ -5,10 +5,10 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-brightgreen.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.21-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)](#环境要求)
-[![Binary](https://img.shields.io/badge/%E4%BA%8C%E8%BF%9B%E5%88%B6-%E5%8D%95%E6%96%87%E4%BB%B6%E9%9B%B6%E4%BE%9D%E8%B5%96-orange)](#架构)
+[![Binary](https://img.shields.io/badge/%E4%B8%A4%E4%B8%AA%E4%BA%8C%E8%BF%9B%E5%88%B6-%E9%9B%B6%E4%BE%9D%E8%B5%96-orange)](#架构)
 [![i18n](https://img.shields.io/badge/UI-%E4%B8%AD%E6%96%87%20%7C%20English-green)](#核心功能)
 
-**跨机器的 Agent Skill 管理平台。** 把散落在各台机器、各个 AI 编程工具（ZCode / Claude Code / 通用 `.agents` 体系）里的 skill 集中到一个自托管服务：统一收录、全量版本历史、智能去重合并、关系图谱、跨机分发与远程调用。服务端与客户端是同一个 Go 二进制，无任何运行时依赖。
+**跨机器的 Agent Skill 管理平台。** 把散落在各台机器、各个 AI 编程工具（ZCode / Claude Code / 通用 `.agents` 体系）里的 skill 集中到一个自托管服务：统一收录、全量版本历史、智能去重合并、关系图谱、跨机分发与远程调用。服务端与客户端是两个各自独立的 Go 单文件二进制，无任何运行时依赖——VPS 上跑一个 `skillshooter-server`，每台纳管机器跑 `skillshooter-client`。
 
 ![总览仪表盘](docs/screenshot-dashboard.png)
 
@@ -33,22 +33,28 @@
 
 **方式二：下载现成二进制**
 
-[Releases](https://github.com/Herbicide7665/skillShooter/releases/latest) 提供 windows / linux amd64+arm64 / darwin amd64+arm64 五平台构建，每平台分 `skillshooter-server-*` 与 `skillshooter-client-*` 两个名字——**同一二进制**，仅作角色指引：服务端取 `server`，接入机器取 `client`（Linux/macOS 首次运行先 `chmod +x`）。
+[Releases](https://github.com/Herbicide7665/skillShooter/releases/latest) 提供 windows / linux amd64+arm64 / darwin amd64+arm64 五平台构建，每平台**两个独立二进制**：
+
+- `skillshooter-server-*` — hub 服务端，VPS/服务器上跑一个。
+- `skillshooter-client-*` — 接入机器的客户端（Windows 托盘或 CLI）。
+
+客户端也可以由 hub 直接分发：把 `skillshooter-client-*` 放到服务端二进制同目录，设置页「一键接入」按钮与引导脚本就能发出已预配置的客户端（见第 3 步）。Linux/macOS 首次运行先 `chmod +x`。
 
 **方式三：源码构建**
 
 ```bash
-go build -o skillshooter .
+go build -o skillshooter-server  ./cmd/skillshooter-server
+go build -o skillshooter-client  ./cmd/skillshooter-client
 ```
 
 ## 快速开始
 
-全部数据与配置都在二进制同目录：`skillshooter.db`（自动创建）+ `config.yaml`（模板见 [config.yaml.example](config.yaml.example)）。客户端公共参数：`--server` / `--token`，或环境变量 `SKILLSHOOTER_SERVER` / `SKILLSHOOTER_TOKEN`。
+两种角色、两个二进制：**服务端**跑在 hub 机器上（全部数据与配置在其同目录：`skillshooter.db` 自动创建 + `config.yaml`，模板见 [config.yaml.example](config.yaml.example)）；**客户端**跑在每台纳管机器上（公共参数 `--server` / `--token`，或环境变量 `SKILLSHOOTER_SERVER` / `SKILLSHOOTER_TOKEN`）。
 
-**1. 启动服务端**
+**1. 启动服务端（hub，比如 VPS 上）**
 
 ```bash
-./skillshooter serve                # 默认 0.0.0.0:8790
+./skillshooter-server serve         # 默认 0.0.0.0:8790
 # 可选参数: --addr 0.0.0.0:9000 --db /data/skillshooter.db
 ```
 
@@ -66,16 +72,16 @@ curl -fsSL http://SERVER:8790/agent.sh | sh -s -- --server http://SERVER:8790 --
 # Windows 用设置页复制的 agent.ps1 引导命令
 ```
 
-引导脚本自动按 OS/架构从服务端 `/dl/` 下载二进制到 `~/.skillshooter/`，发现 `~/.agents`、`~/.claude`、`~/.zcode` 下的 skill 目录并全量推送；幂等可重复执行，`--daemon` 参数可直接进入常驻模式。也可手动推送单个目录：
+引导脚本自动按 OS/架构从服务端 `/dl/` 下载 `skillshooter-client` 二进制到 `~/.skillshooter/`（需先把 client 各平台构建放到服务端同目录——设置页「一键接入」按钮同口径），发现 `~/.agents`、`~/.claude`、`~/.zcode` 下的 skill 目录并全量推送；幂等可重复执行，`--daemon` 参数可直接进入常驻模式。也可手动推送单个目录：
 
 ```bash
-skillshooter push --server http://SERVER:8790 --token TOKEN --path ~/.agents/skills --hostname my-laptop
+skillshooter-client push --server http://SERVER:8790 --token TOKEN --path ~/.agents/skills --hostname my-laptop
 ```
 
 **4. 常驻客户端（推荐每台机器都跑）**
 
 ```bash
-skillshooter daemon     # 设置页可复制完整命令
+skillshooter-client daemon     # 设置页可复制完整命令
 ```
 
 默认 30s 增量监控推送、5min 自动应用云端合并、轮询领取远程任务、30min 心跳探活，均可用参数调整。Windows 下常驻为托盘图标，托盘「配置…」弹窗可视化修改服务端地址 / Token / 设备名 / 各间隔 / 监控目录；首次无配置启动直接弹出配置向导。
@@ -133,33 +139,57 @@ llm_model: "your-model"
 ## 架构
 
 ```
- ┌──────────────┐    push / pull / 心跳 / 任务认领      ┌──────────────────────────┐
- │  机器 A       │ ──────────(HMAC 签名请求)──────────▶ │  服务端: skillshooter serve│
- │  daemon + CLI │ ◀─────────(分配的 skill /           │  · SQLite WAL 内容寻址存储 │
- └──────────────┘           合并成果 / 远程任务)─────── │  · web 后台（账号会话登录） │
- ┌──────────────┐                                      └────────────▲─────────────┘
- │  机器 B …     │ ───────────────── 同上 ──────────────────────────┘
- └──────────────┘                                        浏览器 http://server:8790
+ ┌───────────────┐   push / pull / 心跳 / 任务认领     ┌─────────────────────────────┐
+ │  机器 A        │ ─────────(HMAC 签名请求)─────────▶ │ hub: skillshooter-server    │
+ │  skillshooter-  │ ◀─────────(分配的 skill /          │  · SQLite WAL 内容寻址存储  │
+ │  client daemon │           合并成果 / 远程任务)────── │  · web 后台（账号会话登录）  │
+ └───────────────┘                                      │  · /dl/ 分发预配置客户端     │
+ ┌───────────────┐                                      └──────────▲─────────┬───────┘
+ │  机器 B …      │ ───────────── 同上 ─────────────────────────────┘         │
+ └───────────────┘                                          浏览器 http://server:8790
 ```
 
 客户端↔服务端的全部 `/api/*` 通讯协议（认证三模式、签名算法、端点清单）见 [PROTOCOL.md](PROTOCOL.md)。
 
 ## CLI 一览
 
+`skillshooter-server`：
+
 | 子命令 | 作用 |
 |---|---|
 | `serve` | 启动 web 服务端（默认 `:8790`） |
+
+`skillshooter-client`：
+
+| 子命令 | 作用 |
+|---|---|
 | `push` | 扫描目录推送 skill（递归发现 SKILL.md） |
 | `pull` | 拉取 hub 最新版本到本地（默认跳过已存在，同名多机自动 `名字@机器` 区分） |
 | `daemon` | 常驻客户端：增量监控推送 + 自动应用云端合并 + 领取远程任务 |
 | `config` | 终端配置向导（回车保留当前值） |
 | `upload` | `push` 的别名 |
+| *（无参数）* | Windows 托盘常驻（读已保存配置） |
 
 ## 数据与运维
 
-- 全部数据在二进制同目录：`skillshooter.db`（SQLite/WAL，内容寻址 blob 存储）+ `config.yaml`
-- **备份 = 拷走一个 db 文件；迁移 = 拷走 db + exe**
+- 全部数据在服务端二进制同目录：`skillshooter.db`（SQLite/WAL，内容寻址 blob 存储）+ `config.yaml`
+- **备份 = 拷走一个 db 文件；迁移 = 拷走 db + 服务端二进制**
+- 客户端机器本地只留 `~/.skillshooter/`（config.json、日志、任务产物）
 - 无外部依赖，端口放行防火墙即可；公网部署建议 nginx 反代加 TLS
+
+## 发布（维护者）
+
+打 tag 推上去——`git tag v2.4.0 && git push origin v2.4.0`——然后把交叉编译产物挂到 GitHub release：
+
+```bash
+for osarch in "linux amd64" "linux arm64" "darwin amd64" "darwin arm64" "windows amd64"; do
+  set -- $osarch
+  GOOS=$1 GOARCH=$2 go build -o skillshooter-server-$1-$2  ./cmd/skillshooter-server
+  GOOS=$1 GOARCH=$2 go build -o skillshooter-client-$1-$2  ./cmd/skillshooter-client
+done
+# windows 产物以 .exe 结尾；把 skillshooter-client-* 各平台构建放到 VPS 上服务端同目录，
+# /dl/ 与设置页即可对外分发已预配置的客户端
+```
 
 ## 测试
 

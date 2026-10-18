@@ -8,8 +8,8 @@ if exist .push-env (
 set /p TOK=<.token
 if "%SRV%"=="" set SRV=http://your-server:8790
 if "%H%"=="" set H=your-host
-skillshooter.exe push --server %SRV% --token %TOK% --path "%USERPROFILE%\.agents\skills" --hostname %H%
-skillshooter.exe push --server %SRV% --token %TOK% --path "%USERPROFILE%\.claude\skills" --hostname %H%
-skillshooter.exe push --server %SRV% --token %TOK% --path "%USERPROFILE%\.claude\plugins" --hostname %H%
-skillshooter.exe push --server %SRV% --token %TOK% --path "%USERPROFILE%\.zcode\cli\plugins\cache" --hostname %H%
+skillshooter-client.exe push --server %SRV% --token %TOK% --path "%USERPROFILE%\.agents\skills" --hostname %H%
+skillshooter-client.exe push --server %SRV% --token %TOK% --path "%USERPROFILE%\.claude\skills" --hostname %H%
+skillshooter-client.exe push --server %SRV% --token %TOK% --path "%USERPROFILE%\.claude\plugins" --hostname %H%
+skillshooter-client.exe push --server %SRV% --token %TOK% --path "%USERPROFILE%\.zcode\cli\plugins\cache" --hostname %H%
 echo == push 完成，hub: %SRV% ==
