@@ -41,28 +41,9 @@
 go build -o skillshooter .
 ```
 
-## 配置
-
-全部数据与配置都在二进制同目录：`skillshooter.db`（自动创建）+ `config.yaml`（模板见 [config.yaml.example](config.yaml.example)）。
-
-服务端：
-
-- 监听与存储：`--addr`（默认 `0.0.0.0:8790`）、`--db`（默认二进制同目录 `skillshooter.db`）
-- 初始管理员密码可用环境变量 `SKILLSHOOTER_ADMIN_PASSWORD` 预设，否则随机生成并仅打印一次
-
-客户端公共参数：`--server` / `--token`，或环境变量 `SKILLSHOOTER_SERVER` / `SKILLSHOOTER_TOKEN`。
-
-LLM（可选，开启去重判定/合并建议/关系归纳）——`config.yaml`：
-
-```yaml
-llm_api_key: "你的key"
-llm_base_url: "https://api.openai.com/v1"   # 任意 OpenAI 兼容端点；含 /anthropic 时自动走 Anthropic 协议
-llm_model: "your-model"
-```
-
-优先级：环境变量（`LLM_API_KEY`，兼容 `GLM_API_KEY` / `ZHIPUAI_API_KEY`；`SKILLSHOOTER_LLM_BASE_URL`；`SKILLSHOOTER_LLM_MODEL`）> web 设置页保存 > `config.yaml`。`model` 未配置时智能功能降级不可用，其余功能不受影响。设置页有「测试连通性」按钮。
-
 ## 快速开始
+
+全部数据与配置都在二进制同目录：`skillshooter.db`（自动创建）+ `config.yaml`（模板见 [config.yaml.example](config.yaml.example)）。客户端公共参数：`--server` / `--token`，或环境变量 `SKILLSHOOTER_SERVER` / `SKILLSHOOTER_TOKEN`。
 
 **1. 启动服务端**
 
@@ -71,7 +52,7 @@ llm_model: "your-model"
 # 可选参数: --addr 0.0.0.0:9000 --db /data/skillshooter.db
 ```
 
-首次启动会打印 **API token** 和**初始管理员账号密码**（仅此一次）。
+首次启动会打印 **API token** 和**初始管理员账号密码**（仅此一次）；可用环境变量 `SKILLSHOOTER_ADMIN_PASSWORD` 预设密码。
 
 **2. 登录 web 后台**
 
@@ -99,9 +80,17 @@ skillshooter daemon     # 设置页可复制完整命令
 
 默认 30s 增量监控推送、5min 自动应用云端合并、轮询领取远程任务、30min 心跳探活，均可用参数调整。Windows 下常驻为托盘图标，托盘「配置…」弹窗可视化修改服务端地址 / Token / 设备名 / 各间隔 / 监控目录；首次无配置启动直接弹出配置向导。
 
-**5. 配置 LLM（可选）**
+**5. 配置 LLM（可选，开启去重判定/合并建议/关系归纳）**
 
-见[配置](#配置)一节；未配置时其余功能完整可用。
+在 `config.yaml` 中：
+
+```yaml
+llm_api_key: "你的key"
+llm_base_url: "https://api.openai.com/v1"   # 任意 OpenAI 兼容端点；含 /anthropic 时自动走 Anthropic 协议
+llm_model: "your-model"
+```
+
+优先级：环境变量（`LLM_API_KEY`，兼容 `GLM_API_KEY` / `ZHIPUAI_API_KEY`；`SKILLSHOOTER_LLM_BASE_URL`；`SKILLSHOOTER_LLM_MODEL`）> web 设置页保存 > `config.yaml`。`model` 未配置时智能功能降级不可用，其余功能不受影响。设置页有「测试连通性」按钮。
 
 ## 核心功能
 

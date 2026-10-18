@@ -41,28 +41,9 @@ Click the badge and Codespaces spins up a cloud sandbox that builds the project 
 go build -o skillshooter .
 ```
 
-## Configuration
-
-All data and configuration live next to the binary: `skillshooter.db` (created automatically) + `config.yaml` (template: [config.yaml.example](config.yaml.example)).
-
-Server:
-
-- Listen address and storage: `--addr` (default `0.0.0.0:8790`), `--db` (default `skillshooter.db` next to the binary)
-- Preset the initial admin password with `SKILLSHOOTER_ADMIN_PASSWORD`; otherwise it is generated randomly and printed once
-
-Client common flags: `--server` / `--token`, or environment variables `SKILLSHOOTER_SERVER` / `SKILLSHOOTER_TOKEN`.
-
-LLM (optional, enables dedup judgment / merge proposals / relation clustering) — `config.yaml`:
-
-```yaml
-llm_api_key: "your key"
-llm_base_url: "https://api.openai.com/v1"   # any OpenAI-compatible endpoint; a base_url containing /anthropic switches to the Anthropic protocol
-llm_model: "your-model"
-```
-
-Priority: environment variables (`LLM_API_KEY`, with `GLM_API_KEY` / `ZHIPUAI_API_KEY` as aliases; `SKILLSHOOTER_LLM_BASE_URL`; `SKILLSHOOTER_LLM_MODEL`) > saved in the web settings page > `config.yaml`. Without `model` the smart features degrade and everything else keeps working. The settings page has a connectivity test button.
-
 ## Quick start
+
+All data and configuration live next to the binary: `skillshooter.db` (created automatically) + `config.yaml` (template: [config.yaml.example](config.yaml.example)). Client common flags: `--server` / `--token`, or environment variables `SKILLSHOOTER_SERVER` / `SKILLSHOOTER_TOKEN`.
 
 **1. Start the server**
 
@@ -71,7 +52,7 @@ Priority: environment variables (`LLM_API_KEY`, with `GLM_API_KEY` / `ZHIPUAI_AP
 # optional flags: --addr 0.0.0.0:9000 --db /data/skillshooter.db
 ```
 
-The first start prints the **API token** and the **initial admin username and password** (once only).
+The first start prints the **API token** and the **initial admin username and password** (once only). You can preset the password with `SKILLSHOOTER_ADMIN_PASSWORD`.
 
 **2. Sign in to the web console**
 
@@ -99,9 +80,17 @@ skillshooter daemon     # full command is copyable from the settings page
 
 Defaults: 30s incremental watch-and-push, 5min apply-cloud-merges, remote-job polling, 30min heartbeat — all tunable via flags. On Windows the resident client is a tray icon; the tray "Configure…" dialog edits server URL / token / device name / intervals / watch directories visually, and a first start without configuration opens the setup wizard directly.
 
-**5. Configure the LLM (optional)**
+**5. Configure the LLM (optional, enables dedup judgment / merge proposals / relation clustering)**
 
-See [Configuration](#configuration); without it everything else works as usual.
+In `config.yaml`:
+
+```yaml
+llm_api_key: "your key"
+llm_base_url: "https://api.openai.com/v1"   # any OpenAI-compatible endpoint; a base_url containing /anthropic switches to the Anthropic protocol
+llm_model: "your-model"
+```
+
+Priority: environment variables (`LLM_API_KEY`, with `GLM_API_KEY` / `ZHIPUAI_API_KEY` as aliases; `SKILLSHOOTER_LLM_BASE_URL`; `SKILLSHOOTER_LLM_MODEL`) > saved in the web settings page > `config.yaml`. Without `model` the smart features degrade and everything else keeps working. The settings page has a connectivity test button.
 
 ## Features
 
