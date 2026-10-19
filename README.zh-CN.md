@@ -187,7 +187,9 @@ for osarch in "linux amd64" "linux arm64" "darwin amd64" "darwin arm64" "windows
   GOOS=$1 GOARCH=$2 go build -o skillshooter-server-$1-$2  ./cmd/skillshooter-server
   GOOS=$1 GOARCH=$2 go build -o skillshooter-client-$1-$2  ./cmd/skillshooter-client
 done
-# windows 产物以 .exe 结尾；把 skillshooter-client-* 各平台构建放到 VPS 上服务端同目录，
+# 注意 go build -o 在 GOOS=windows 下不会自动补 .exe——windows 客户端要命名为
+# skillshooter-client.exe（引导脚本从 /dl/skillshooter-client.exe 下载）。
+# 把 skillshooter-client-* 各平台构建放到 VPS 上服务端同目录，
 # /dl/ 与设置页即可对外分发已预配置的客户端
 ```
 

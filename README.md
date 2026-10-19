@@ -133,20 +133,21 @@ Smart features depend on an LLM, but it is optional: without one, dedup falls ba
 
 ### Client experience
 
-- Windows tray resident client with a visual configuration dialog (see [Quick start](#quick-start) step 4); cross-platform CLI: `push` / `pull` / `daemon` / `config`- One-click Chinese/English UI switch; built-in and duplicate skills can be hidden with one click
+- Windows tray resident client with a visual configuration dialog (see [Quick start](#quick-start) step 4); cross-platform CLI: `push` / `pull` / `daemon` / `config`
+- One-click Chinese/English UI switch; built-in and duplicate skills can be hidden with one click
 
 ## Architecture
 
 ```
- ┌──────────────┐    push / pull / heartbeat / job claim   ┌────────────────────────────┐
- │  machine A    │ ──────────(HMAC-signed requests)───────▶ │ hub: skillshooter-server   │
- │  skillshooter- │ ◀─────────(assigned skills /            │  · SQLite WAL content-     │
- │  client daemon │            merged results / jobs)──────── │    addressed storage      │
- └──────────────┘                                           │  · web console (accounts)  │
- ┌──────────────┐                                           │  · /dl/ hands out pre-     │
- │  machine B …  │ ───────────── same as above ──────────────┴──configured clients──────▲─┘
- └──────────────┘                                                                       │
-                                                                      browser http://server:8790
+ ┌───────────────┐ push / pull / heartbeat      ┌─────────────────────────────┐
+ │  machine A    │───────(HMAC-signed requests)▶│ hub: skillshooter-server    │
+ │ skillshooter- │◀────(assigned skills /       │  · SQLite WAL content-      │
+ │ client daemon │     merged results / jobs)───│  · addressed blob storage   │
+ └───────────────┘                              │  · web console (accounts)   │
+ ┌───────────────┐                              │  · /dl/ hands out pre-      │
+ │  machine B …  │──────────── same as above ────────────────────────┘
+ └───────────────┘                              └────────────▲───────┬────────┘
+                                                    browser http://server:8790
 ```
 
 The full client↔server `/api/*` protocol (three auth modes, the signature algorithm, endpoint list) is documented in [PROTOCOL.md](PROTOCOL.md).
@@ -187,8 +188,10 @@ for osarch in "linux amd64" "linux arm64" "darwin amd64" "darwin arm64" "windows
   GOOS=$1 GOARCH=$2 go build -o skillshooter-server-$1-$2  ./cmd/skillshooter-server
   GOOS=$1 GOARCH=$2 go build -o skillshooter-client-$1-$2  ./cmd/skillshooter-client
 done
-# windows artifacts end in .exe; put the skillshooter-client-* builds next to the server
-# binary on the VPS so /dl/ and the settings page can hand out pre-configured clients
+# `go build -o` does not append .exe on GOOS=windows — ship the windows client as
+# skillshooter-client.exe (the bootstrap downloads /dl/skillshooter-client.exe).
+# Put the skillshooter-client-* builds next to the server binary on the VPS so /dl/
+# and the settings page can hand out pre-configured clients
 ```
 
 ## Testing
